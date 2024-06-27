@@ -1,6 +1,11 @@
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{
+    Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+};
 
-use crate::msgs::QueryMsg;
+use crate::{
+    msgs::QueryMsg,
+    state::{LimitOrder, OpenLimitOrderType, Trade, STATE},
+};
 
 use cw2::set_contract_version;
 
@@ -42,10 +47,15 @@ pub fn execute(
             spread_reduction_id,
             slippage_p,
             referral,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => open_trade(
+            deps,
+            env,
+            info,
+            trade,
+            order_type,
+            spread_reduction_id,
+            slippage_p,
+        ),
         ExecuteMsg::CloseTradeMarket { pair_index, index } => {
             // todo!();
             Ok(Response::default())
@@ -96,6 +106,171 @@ pub fn execute(
             Ok(Response::default())
         }
     }
+}
+
+fn open_trade(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trade: Trade,
+    order_type: OpenLimitOrderType,
+    spread_reduction_id: u64,
+    slippage_p: u64,
+) -> Result<Response, ContractError> {
+    let mut state = STATE.load(deps.storage)?;
+
+    if state.is_paused {
+        return Err(ContractError::OperationsHalted);
+    }
+
+    let spread_reduction: Decimal256;
+    if spread_reduction_id > 0 {
+        spread_reduction =
+            state.spread_reductions_p[(spread_reduction_id - 1) as usize];
+    } else {
+        spread_reduction = Decimal256::zero()
+    }
+
+    // check trade count
+    let key = (info.sender, trade.pair_index);
+
+    if state.open_trades_count.get(&key).unwrap_or(&0)
+        + state.pending_market_open_count.get(&key).unwrap_or(&0)
+        + state.pending_market_close_count.get(&key).unwrap_or(&0)
+        >= state.max_trades_per_pair
+    {
+        return Err(ContractError::MaxTradesPerPair);
+    }
+
+    if state
+        .pending_order_ids
+        .get(&info.sender)
+        .unwrap_or(&vec![])
+        .len()
+        >= state.max_pending_market_orders as usize
+    {
+        return Err(ContractError::MaxPendingOrders);
+    }
+
+    if trade.position_size_nusd > state.max_position_size_nusd {
+        return Err(ContractError::InvalidPositionSize);
+    }
+
+    if trade
+        .position_size_nusd
+        .checked_mul(Decimal256::from(trade.leverage.into()))
+        .unwrap()
+        < *state
+            .min_lev_pos
+            .get(&trade.pair_index)
+            .unwrap_or(&Decimal256::zero())
+    {
+        return Err(ContractError::InvalidLeverage);
+    }
+
+    if trade.leverage < 0
+        || trade.leverage
+            >= *state.min_leverage.get(&trade.pair_index).unwrap_or(&0)
+        || trade.leverage
+            <= *state.max_leverage.get(&trade.pair_index).unwrap_or(&0)
+    {
+        return Err(ContractError::InvalidLeverage);
+    }
+    if trade.tp != 0
+        && ((trade.buy && trade.tp <= trade.open_price)
+            || (!trade.buy && trade.tp >= trade.open_price))
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+
+    if trade.sl != 0
+        && ((trade.buy && trade.sl >= trade.open_price)
+            || (!trade.buy && trade.sl <= trade.open_price))
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+
+    let price_impact = get_trade_price_impact(
+        trade.pair_index,
+        trade.buy,
+        trade.position_size_nusd * trade.leverage,
+    );
+
+    if price_impact * leverage >= state.max_negative_pnl_on_open_p {
+        return Err(ContractError::PriceImpactTooHigh);
+    }
+
+    if order_type != OpenLimitOrderType::LEGACY {
+        let index = first_empty_open_limit_index(
+            &state.open_limit_orders,
+            &info.sender,
+            trade.pair_index,
+        );
+
+        // udpate state
+        let open_limit_order = first_empty_limit_index(
+            &state.open_limit_orders,
+            &info.sender,
+            trade.pair_index,
+        );
+        state.open_limit_orders.push(open_limit_order);
+        state.open_limit_orders_id.insert(
+            (info.sender.clone(), trade.pair_index, open_limit_order),
+            state.open_limit_orders.len() - 1 as u64,
+        );
+        state.open_limit_orders_count.insert(
+            (info.sender.clone(), trade.pair_index),
+            state
+                .open_limit_orders_count
+                .get(&(info.sender.clone(), trade.pair_index))
+                .unwrap_or(&0)
+                + 1,
+        );
+    } else {
+        let order_id = get_price(
+            trade.pair_index,
+            trade.position_size_nusd * trade.leverage,
+        );
+
+        // update state
+        state.pending_order_ids.insert(
+            info.sender.clone(),
+            state
+                .pending_order_ids
+                .get(&info.sender)
+                .unwrap_or(&vec![])
+                .push(order_id),
+        );
+
+        state.pending_market_orders.insert(
+            order_id,
+            PendingMarketOrder {
+                order_id,
+                trader: info.sender.clone(),
+                pair_index: trade.pair_index,
+                position_size_nusd: trade.position_size_nusd,
+                leverage: trade.leverage,
+                open_price: trade.open_price,
+                buy: trade.buy,
+                tp: trade.tp,
+                sl: trade.sl,
+                slippage_p,
+                spread_reduction,
+                referral,
+                timelock: env.block.height + state.market_order_timelock,
+            },
+        );
+
+        state.pending_market_open_count.insert(
+            (info.sender.clone(), trade.pair_index),
+            state
+                .pending_market_open_count
+                .get(&(info.sender.clone(), trade.pair_index))
+                .unwrap_or(&0)
+                + 1,
+        );
+    }
+    Ok(())
 }
 
 #[cfg_attr(not(feature = "library"), cosmwasm_std::entry_point)]
