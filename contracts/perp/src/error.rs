@@ -33,6 +33,9 @@ pub enum ContractError {
     #[error("maximum pending orders reached")]
     MaxPendingOrders,
 
+    #[error("order already being closed")]
+    AlreadyBeingClosed,
+
     #[error("price impact too high")]
     PriceImpactTooHigh,
 
@@ -59,6 +62,9 @@ pub enum ContractError {
 
     #[error("invalid referral address")]
     InvalidReferral,
+
+    #[error("trade was not found")]
+    TradeNotFound,
 }
 
 impl From<serde_json::Error> for ContractError {

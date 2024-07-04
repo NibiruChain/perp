@@ -1,5 +1,7 @@
 pub mod msgs;
+pub mod trade;
 pub mod tutil;
+pub mod util;
 
 // #[cfg(not(feature = "library"))]
 // When imported with the "library" feature, contract.rs will not be compiled.

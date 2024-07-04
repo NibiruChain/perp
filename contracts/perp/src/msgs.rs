@@ -87,7 +87,7 @@ pub enum ExecuteMsg {
         pair_index: u64,
         index: u64,
         nft_id: u64,
-        nft_type: u64,
+        nft_type: u8,
     },
 
     /// Admin executes the specified message.
