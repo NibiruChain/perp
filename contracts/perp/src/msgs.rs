@@ -20,7 +20,7 @@ pub enum ExecuteMsg {
         trade: Trade,
         order_type: OpenLimitOrderType,
         spread_reduction_id: u64,
-        slippage_p: u64,
+        slippage_p: Decimal256,
         referral: String,
     },
 

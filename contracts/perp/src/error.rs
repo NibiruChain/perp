@@ -65,6 +65,9 @@ pub enum ContractError {
 
     #[error("trade was not found")]
     TradeNotFound,
+
+    #[error("trade invalid")]
+    TradeInvalid,
 }
 
 impl From<serde_json::Error> for ContractError {

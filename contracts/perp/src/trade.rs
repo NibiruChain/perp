@@ -12,7 +12,7 @@ pub fn open_trade(
     trade: Trade,
     order_type: OpenLimitOrderType,
     spread_reduction_id: u64,
-    slippage_p: u64,
+    slippage_p: Decimal256,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
 
@@ -43,14 +43,17 @@ pub fn open_trade(
     }
 
     if order_type == OpenLimitOrderType::MARKET {
-        state.execute_market_order(
-            trade,
-            info,
-            env,
-            slippage_p,
-            spread_reduction,
-            price_impact,
-        );
+        state
+            .execute_market_order(
+                trade,
+                info,
+                env,
+                slippage_p,
+                spread_reduction,
+                spread_reduction,
+                price_impact,
+            )
+            .unwrap();
     } else {
         state.store_open_limit_order(&info, &trade, spread_reduction_id, &env);
     }
@@ -89,7 +92,7 @@ pub fn close_trade_market(
             let new_trade = Trade {
                 trader: info.sender.clone(),
                 pair_index: pair_index,
-                initial_pos_token: 0,
+                initial_pos_token: Decimal256::zero(),
                 position_size_nusd: Decimal256::zero(),
                 open_price: Decimal256::zero(),
                 buy: false,
@@ -98,13 +101,17 @@ pub fn close_trade_market(
                 sl: Decimal256::zero(),
             };
 
-            state.execute_market_order(
-                new_trade,
-                info,
-                env,
-                0,
-                Decimal256::zero(),
-            );
+            state
+                .execute_market_order(
+                    new_trade,
+                    info,
+                    env,
+                    Decimal256::zero(),
+                    Decimal256::zero(),
+                    Decimal256::zero(),
+                    Decimal256::zero(),
+                )
+                .unwrap();
             Ok(Response::new().add_attribute("action", "close_trade_market"))
         }
         _ => return Err(ContractError::TradeDoesNotExist),

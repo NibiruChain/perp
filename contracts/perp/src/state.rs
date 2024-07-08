@@ -1,9 +1,12 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal256, Env, MessageInfo, Response};
+use cosmwasm_std::{
+    Addr, BankMsg, Coin, CosmosMsg, Decimal256, Env, MessageInfo, Response,
+    Uint128, Uint256,
+};
 use cw_storage_plus::Item;
 use std::collections::HashMap;
 
-use crate::{error::ContractError, trade};
+use crate::error::ContractError;
 
 #[cw_serde]
 pub struct Trader {
@@ -28,8 +31,8 @@ pub struct Trade {
 #[cw_serde]
 pub struct TradeInfo {
     pub token_id: u64,
-    pub token_price_nusd: u128,
-    pub open_interest_nusd: u128,
+    pub token_price_nusd: Decimal256,
+    pub open_interest_nusd: Uint256,
     pub tp_last_updated: u64,
     pub sl_last_updated: u64,
     pub being_market_closed: bool,
@@ -65,7 +68,6 @@ pub struct PendingMarketOrder {
 #[cw_serde]
 pub struct PendingNftOrder {
     pub nft_holder: Addr,
-    pub nft_id: u64,
     pub trader: Addr,
     pub pair_index: u64,
     pub index: u64,
@@ -114,7 +116,6 @@ pub struct Values {
     pub token_price_nusd: u128,
     pub pos_token: u128,
     pub pos_nusd: u128,
-    pub nft_reward: u128,
 }
 
 #[cw_serde]
@@ -148,6 +149,7 @@ pub struct State {
     // user info mapping
     pub traders: HashMap<Addr, Trader>,
     pub oracle_address: Addr,
+    pub dev_gov_fee_address: Addr,
 
     // trade mappings. trader, pair_index, trade_index -> trade/trade_info
     // We do hashmaps of hashmaps to be able to count the number of trades
@@ -200,6 +202,9 @@ pub struct State {
     pub pair_params: HashMap<u64, PairParams>,
     pub pair_funding_fees: HashMap<u64, PairFundingFees>,
     pub pair_rollover_fees: HashMap<u64, PairRolloverFees>,
+
+    pub group_collateral: HashMap<u64, u128>,
+    pub group_max_collateral: HashMap<u64, [u128; 2]>, // [long, short]
 }
 
 impl State {
@@ -245,6 +250,12 @@ impl State {
             max_leverage: HashMap::new(),
 
             oracle_address: Addr::unchecked(""),
+
+            dev_gov_fee_address: Addr::unchecked(""),
+            dev_gov_fees: Decimal256::from_ratio(10_u64, 10000_u64),
+
+            group_collateral: HashMap::new(),
+            group_max_collateral: HashMap::new(),
         }
     }
 
@@ -305,18 +316,20 @@ impl State {
         info: MessageInfo,
         env: Env,
         slippage_p: Decimal256,
+        wanted_price: Decimal256,
         spread_reduction: Decimal256,
         price_impact: Decimal256,
     ) -> Result<Response, ContractError> {
-        let price: Decimal256 = todo!();
-        let price_after_impact: Decimal256 = todo!();
-        let wanted_price: Decimal256 = todo!();
+        let price: Decimal256 = get_price_from_oracle(trade.pair_index);
+        let price_after_impact = get_price_impact();
 
         let mut trade = trade.clone();
         trade.open_price = price_after_impact;
 
         let max_slippage = wanted_price * slippage_p;
 
+        // todo: make errors more descriptive
+        // todo: check if there's no repeat with the caller function
         if price.is_zero()
             || (trade.buy && trade.open_price > wanted_price + max_slippage)
             || (!trade.buy && trade.open_price < wanted_price - max_slippage)
@@ -326,7 +339,7 @@ impl State {
             || (!trade.sl.is_zero()
                 && ((trade.buy && trade.open_price <= trade.sl)
                     || (!trade.buy && trade.open_price >= trade.sl)))
-            || !within_exposure_limits(
+            || !self.within_exposure_limits(
                 trade.pair_index,
                 trade.buy,
                 trade.position_size_nusd,
@@ -339,21 +352,24 @@ impl State {
                 .unwrap()
                 > self.max_negative_pnl_on_open_p
         {
-            return Err(ContractError::FailedToOpenTrade);
+            return Err(ContractError::TradeInvalid);
         }
 
-        return self.register_trade(trade, order_type, limit_index);
+        return self.register_trade(
+            trade,
+            OpenLimitOrderType::MARKET,
+            env.block.height,
+        );
     }
 
     pub fn register_trade(
         &mut self,
         trade: Trade,
-        nft_id: u64,
-        limit_index: u64,
-        env: &Env,
-        info: &MessageInfo,
+        _order_type: OpenLimitOrderType,
+        block_height: u64,
     ) -> Result<Response, ContractError> {
         let mut trade = trade.clone();
+        let mut messages: Vec<CosmosMsg> = vec![];
 
         // Handle developer and governance fees
         let leverage = Decimal256::from_atomics(trade.leverage, 0).unwrap();
@@ -366,14 +382,23 @@ impl State {
         trade.position_size_nusd =
             trade.position_size_nusd.checked_sub(fee).unwrap();
 
-        // Receive DAI from trader
-        self.receive_dai_from_trader(&trade.trader, trade.position_size_nusd)?;
+        // send nusd to dev contract
+        messages.push(
+            BankMsg::Send {
+                to_address: self.dev_gov_fee_address.to_string(),
+                amount: vec![Coin {
+                    denom: "nusd".to_string(),
+                    amount: Uint128::try_from(fee.to_uint_floor()).unwrap(),
+                }],
+            }
+            .into(),
+        );
 
         // Calculate token price and initial position tokens
         let token_price_nusd = self.get_token_price_nusd();
         trade.initial_pos_token = trade
             .position_size_nusd
-            .checked_mul(Decimal256::from_ratio(1_u64, token_price_nusd))
+            .checked_div(token_price_nusd)
             .unwrap();
         trade.position_size_nusd = Decimal256::zero();
 
@@ -384,100 +409,75 @@ impl State {
                 .checked_mul(leverage)
                 .unwrap()
                 .checked_mul(self.get_pair_referral_fee(trade.pair_index))
-                .unwrap()
-                .checked_div(Decimal256::from_ratio(100_u64, 1_u64))
                 .unwrap();
-            self.handle_tokens(&referral, r_tokens, true)?;
-            self.increase_referral_rewards(&referral, r_tokens);
+
+            messages.push(
+                BankMsg::Send {
+                    to_address: referral.to_string(),
+                    amount: vec![Coin {
+                        denom: "nusd".to_string(),
+                        amount: Uint128::try_from(r_tokens.to_uint_floor())
+                            .unwrap(),
+                    }],
+                }
+                .into(),
+            );
+
+            messages.push(self.increase_referral_rewards(&referral, r_tokens));
             trade.initial_pos_token =
                 trade.initial_pos_token.checked_sub(r_tokens).unwrap();
         }
 
-        // Handle NFT rewards
-        if nft_id < 1500 {
-            let n_tokens = trade
-                .initial_pos_token
-                .checked_mul(leverage)
-                .unwrap()
-                .checked_mul(self.get_pair_nft_limit_order_fee(trade.pair_index))
-                .unwrap()
-                .checked_div(Decimal256::from_ratio(100_u64, 1_u64))
-                .unwrap();
-            trade.initial_pos_token =
-                trade.initial_pos_token.checked_sub(n_tokens).unwrap();
-            self.distribute_nft_reward(
-                trade.trader.clone(),
-                trade.pair_index,
-                limit_index,
-                n_tokens,
-            )?;
-            self.increase_nft_rewards(nft_id, n_tokens);
-        }
-
         // Assign trade index and update TP/SL
-        trade.index =
-            self.first_empty_trade_index(trade.trader.clone(), trade.pair_index);
         trade.tp =
             self.correct_tp(trade.open_price, leverage, trade.tp, trade.buy);
         trade.sl =
             self.correct_sl(trade.open_price, leverage, trade.sl, trade.buy);
 
-        // Store initial accumulated fees and update group collateral
-        self.store_trade_initial_acc_fees(
-            &trade.trader,
-            trade.pair_index,
-            trade.index,
-            trade.buy,
-        );
         self.update_group_collateral(
             trade.pair_index,
             trade
                 .initial_pos_token
-                .checked_mul(Decimal256::from_ratio(token_price_nusd, 1_u64))
+                .checked_mul(token_price_nusd)
                 .unwrap(),
             trade.buy,
             true,
         );
 
         // Store the trade
+        let open_interest = trade
+            .initial_pos_token
+            .checked_mul(Decimal256::from_atomics(trade.leverage, 0).unwrap())
+            .unwrap()
+            .checked_mul(token_price_nusd)
+            .unwrap();
+
         self.store_trade(
             trade.clone(),
             TradeInfo {
                 token_id: 0,
                 token_price_nusd,
-                open_interest_nusd: trade
-                    .initial_pos_token
-                    .checked_mul(leverage)
-                    .unwrap()
-                    .checked_mul(Decimal256::from_ratio(token_price_nusd, 1_u64))
-                    .unwrap(),
-                tp_last_updated: env.block.height,
-                sl_last_updated: env.block.height,
+                open_interest_nusd: open_interest.to_uint_floor(),
+                tp_last_updated: block_height,
+                sl_last_updated: block_height,
                 being_market_closed: false,
             },
         );
 
-        Ok(Response::new().add_attribute("action", "register_trade"))
+        Ok(Response::new()
+            .add_attribute("action", "register_trade")
+            .add_messages(messages))
     }
 
-    // Mock implementations for external methods. These should be implemented based on actual logic.
-    fn receive_dai_from_trader(
-        &self,
-        _trader: &Addr,
-        _amount: Decimal256,
-    ) -> Result<(), ContractError> {
-        // Logic to receive DAI from trader
-        Ok(())
-    }
-
-    fn get_token_price_nusd(&self) -> u64 {
-        // Logic to get the token price in NUSD
-        1 // Placeholder
+    fn get_token_price_nusd(&self) -> Decimal256 {
+        // query the oracle
+        todo!()
     }
 
     fn get_referral(&self, _trader: &Addr) -> Option<Addr> {
         // Logic to get referral address
-        None // Placeholder
+        // query the referral contract
+        todo!()
     }
 
     fn handle_tokens(
@@ -490,70 +490,131 @@ impl State {
         Ok(())
     }
 
-    fn increase_referral_rewards(&self, _address: &Addr, _amount: Decimal256) {
-        // Logic to increase referral rewards
-    }
-
-    fn distribute_nft_reward(
+    fn increase_referral_rewards(
         &self,
-        _trader: Addr,
-        _pair_index: u64,
-        _limit_index: u64,
-        _n_tokens: Decimal256,
-    ) -> Result<(), ContractError> {
-        // Logic to distribute NFT rewards
-        Ok(())
-    }
-
-    fn increase_nft_rewards(&self, _nft_id: u64, _amount: Decimal256) {
-        // Logic to increase NFT rewards
-    }
-
-    fn first_empty_trade_index(&self, _trader: Addr, _pair_index: u64) -> u64 {
-        // Logic to get the first empty trade index
-        0 // Placeholder
+        _address: &Addr,
+        _amount: Decimal256,
+    ) -> CosmosMsg {
+        // generate message to increase the trading volume of the referral
+        todo!();
     }
 
     fn correct_tp(
         &self,
-        _open_price: Decimal256,
-        _leverage: Decimal256,
-        _tp: Decimal256,
-        _buy: bool,
+        open_price: Decimal256,
+        leverage: Decimal256,
+        tp: Decimal256,
+        buy: bool,
     ) -> Decimal256 {
-        // Logic to correct TP
-        Decimal256::zero() // Placeholder
+        if tp.is_zero()
+            || current_percent_profit(open_price, tp, buy, leverage)
+                == self.max_gain_p
+        {
+            let tp_diff = open_price
+                .checked_mul(self.max_gain_p)
+                .unwrap()
+                .checked_div(leverage)
+                .unwrap()
+                .checked_div(Decimal256::from_atomics(100_u64, 0).unwrap())
+                .unwrap();
+            return if buy {
+                open_price.checked_add(tp_diff).unwrap()
+            } else {
+                if tp_diff <= open_price {
+                    open_price.checked_sub(tp_diff).unwrap()
+                } else {
+                    Decimal256::zero()
+                }
+            };
+        }
+        tp
     }
 
     fn correct_sl(
         &self,
-        _open_price: Decimal256,
-        _leverage: Decimal256,
-        _sl: Decimal256,
-        _buy: bool,
+        open_price: Decimal256,
+        leverage: Decimal256,
+        sl: Decimal256,
+        buy: bool,
     ) -> Decimal256 {
-        // Logic to correct SL
-        Decimal256::zero() // Placeholder
+        if !sl.is_zero()
+            && current_percent_profit(open_price, sl, buy, leverage)
+                < self.max_sl_p
+        {
+            let sl_diff = open_price
+                .checked_mul(self.max_sl_p)
+                .unwrap()
+                .checked_div(leverage)
+                .unwrap()
+                .checked_div(Decimal256::from_atomics(100_u64, 0).unwrap())
+                .unwrap();
+            return if buy {
+                open_price.checked_sub(sl_diff).unwrap()
+            } else {
+                open_price.checked_add(sl_diff).unwrap()
+            };
+        }
+        sl
     }
 
-    fn store_trade_initial_acc_fees(
+    fn within_exposure_limits(
         &self,
-        _trader: &Addr,
-        _pair_index: u64,
-        _index: u64,
-        _buy: bool,
-    ) {
-        // Logic to store initial accumulated fees
+        pair_index: u64,
+        buy: bool,
+        position_size_nusd: Decimal256,
+        leverage: u64,
+    ) -> bool {
+        let default =
+            [Decimal256::zero(), Decimal256::zero(), Decimal256::zero()];
+        let open_interest_dai =
+            self.open_interest.get(&pair_index).unwrap_or(&default);
+
+        let group_collateral = self.group_collateral.get(&pair_index).unwrap();
+        let side_group_max_collateral =
+            match self.group_max_collateral.get(&pair_index) {
+                Some(collateral) => collateral[if buy { 0 } else { 1 }],
+                None => 0,
+            };
+
+        let open_interest_check = open_interest_dai[if buy { 0 } else { 1 }]
+            .checked_add(
+                position_size_nusd
+                    .checked_mul(Decimal256::from_atomics(leverage, 0).unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            <= open_interest_dai[2];
+
+        let group_collateral_check = group_collateral
+            .checked_add(
+                Uint128::try_from(position_size_nusd.to_uint_floor())
+                    .unwrap()
+                    .into(),
+            )
+            .unwrap()
+            <= side_group_max_collateral;
+
+        open_interest_check && group_collateral_check
     }
 
     fn update_group_collateral(
-        &self,
-        _pair_index: u64,
-        _amount: Decimal256,
-        _buy: bool,
-        _increase: bool,
+        &mut self,
+        pair_index: u64,
+        amount: Decimal256,
+        buy: bool,
+        increase: bool,
     ) {
-        // Logic to update group collateral
+        let amount: u128 =
+            Uint128::try_from(amount.to_uint_floor()).unwrap().into();
+        let buy_sell: u64 = if buy { 0 } else { 1 };
+
+        if increase {
+            self.group_collateral
+                .insert(pair_index, self.group_collateral[&buy_sell] + amount);
+        } else {
+            self.group_collateral
+                .insert(pair_index, self.group_collateral[&buy_sell] - amount);
+        }
     }
 
     fn store_trade(&self, _trade: Trade, _trade_info: TradeInfo) {
@@ -564,18 +625,31 @@ impl State {
         // Logic to get pair referral fee
         Decimal256::zero() // Placeholder
     }
-
-    fn get_pair_nft_limit_order_fee(&self, _pair_index: u64) -> Decimal256 {
-        // Logic to get pair NFT limit order fee
-        Decimal256::zero() // Placeholder
-    }
 }
 
-fn within_exposure_limits(
-    pair_index: u64,
-    buy: bool,
-    position_size_nusd: Decimal256,
-    leverage: u64,
-) -> bool {
+fn get_price_from_oracle(pair_index: u64) -> Decimal256 {
     todo!()
+}
+
+fn get_price_impact() -> Decimal256 {
+    todo!()
+}
+
+fn current_percent_profit(
+    open_price: Decimal256,
+    price: Decimal256,
+    buy: bool,
+    leverage: Decimal256,
+) -> Decimal256 {
+    let profit = if buy {
+        price.checked_sub(open_price).unwrap()
+    } else {
+        open_price.checked_sub(price).unwrap()
+    };
+    let percent_profit = profit
+        .checked_mul(leverage)
+        .unwrap()
+        .checked_div(open_price)
+        .unwrap();
+    percent_profit
 }

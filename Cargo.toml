@@ -1,5 +1,5 @@
 [workspace]
-members = ["scripts", "contracts/*"]
+members = ["scripts", "contracts/perp"]
 resolver = "2"
 
 # Dependencies can be inherited from a workspace by specifying the dependency in
