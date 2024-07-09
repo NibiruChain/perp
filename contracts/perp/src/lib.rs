@@ -1,4 +1,5 @@
 pub mod msgs;
+pub mod query;
 pub mod trade;
 pub mod tutil;
 pub mod util;

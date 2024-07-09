@@ -1,5 +1,5 @@
 [workspace]
-members = ["scripts", "contracts/perp"]
+members = ["scripts", "contracts/perp", "contracts/oracle"]
 resolver = "2"
 
 # Dependencies can be inherited from a workspace by specifying the dependency in
@@ -23,6 +23,7 @@ cosmwasm-schema = "2.0.2"
 cw-storage-plus = { version = "2.0.0" }
 cw-multi-test = { version = "2.0.1" }
 cw-utils = { version = "2.0.0" }
+nibiru-ownable = { version = "0.1.0" }
 
 # deps: cw-plus
 cw2 = { version = "2.0.0" }
