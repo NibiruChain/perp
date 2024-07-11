@@ -29,9 +29,9 @@ pub struct OracleInstantiateMsg {
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    mut deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: OracleInstantiateMsg,
 ) -> Result<Response, OwnershipError> {
     nibiru_ownable::initialize_owner(deps.storage, msg.owner.as_deref())?;

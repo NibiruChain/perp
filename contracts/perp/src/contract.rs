@@ -20,13 +20,15 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(
         deps.storage,
         format!("crates.io:{CONTRACT_NAME}"),
         CONTRACT_VERSION,
     )?;
+
+    nibiru_ownable::initialize_owner(deps.storage, msg.owner.as_deref())?;
     Ok(Response::default())
 }
 
@@ -90,7 +92,7 @@ pub fn execute(
             nft_type,
         ),
         ExecuteMsg::AdminMsg { msg } => {
-            // todo!();
+            nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             Ok(Response::default())
         }
     }

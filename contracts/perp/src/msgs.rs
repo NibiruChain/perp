@@ -3,10 +3,11 @@ use std::collections::BTreeSet;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Decimal256;
 
-use crate::state::{
+use crate::trading::state::{
     LimitOrder, OpenLimitOrder, OpenLimitOrderType, PendingMarketOrder,
     PendingNftOrder, Trade, TradeInfo, Trader,
 };
+
 #[cw_serde]
 pub enum ExecuteMsg {
     /// Opens a new trade with specified parameters.
@@ -269,7 +270,7 @@ pub enum AdminExecuteMsg {
 #[cw_serde]
 pub struct InstantiateMsg {
     /// The owner is the only one that can use ExecuteMsg.
-    pub owner: String,
+    pub owner: Option<String>,
     pub to_addrs: BTreeSet<String>,
     pub opers: BTreeSet<String>,
 }

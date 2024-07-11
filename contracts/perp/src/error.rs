@@ -1,4 +1,7 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{
+    DecimalRangeExceeded, DivideByZeroError, OverflowError, StdError,
+};
+use nibiru_ownable::OwnershipError;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -39,6 +42,9 @@ pub enum ContractError {
     #[error("price impact too high")]
     PriceImpactTooHigh,
 
+    #[error("outside of exposure limits")]
+    OutsideExposureLimits,
+
     #[error("no corresponding NFT for spread reduction")]
     NoCorrespondingNftSpreadReduction,
 
@@ -68,10 +74,37 @@ pub enum ContractError {
 
     #[error("trade invalid")]
     TradeInvalid,
+
+    #[error("inssuficient collateral")]
+    InsufficientCollateral,
 }
 
 impl From<serde_json::Error> for ContractError {
     fn from(err: serde_json::Error) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<OwnershipError> for ContractError {
+    fn from(err: OwnershipError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<OverflowError> for ContractError {
+    fn from(err: OverflowError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<DecimalRangeExceeded> for ContractError {
+    fn from(err: DecimalRangeExceeded) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<DivideByZeroError> for ContractError {
+    fn from(err: DivideByZeroError) -> Self {
         ContractError::SerdeJson(err.to_string())
     }
 }

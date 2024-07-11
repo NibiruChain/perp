@@ -217,3 +217,26 @@ pub fn event_liquidate(
         .add_attribute("price", price.to_string())
         .add_attribute("liq_id", liq_id.to_string())
 }
+
+pub fn event_nft_order_initiated(nft_id: &u64, order_id: &u64) -> Event {
+    Event::new("nft_order_initiated")
+        .add_attribute("nft_id", nft_id.to_string())
+        .add_attribute("order_id", order_id.to_string())
+}
+
+pub fn event_limit_order_executed(
+    order_id: &u64,
+    trader: &str,
+    pair_index: &u64,
+    price: &u128,
+    price_impact: &u128,
+    position_size_dai: &u128,
+) -> Event {
+    Event::new("limit_order_executed")
+        .add_attribute("order_id", order_id.to_string())
+        .add_attribute("trader", trader.to_string())
+        .add_attribute("pair_index", pair_index.to_string())
+        .add_attribute("price", price.to_string())
+        .add_attribute("price_impact", price_impact.to_string())
+        .add_attribute("position_size_dai", position_size_dai.to_string())
+}

@@ -19,3 +19,5 @@ thiserror = { workspace = true }
 cw2 = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+oracle = { workspace = true }
+nibiru-ownable = { workspace = true }
