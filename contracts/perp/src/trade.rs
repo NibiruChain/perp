@@ -1,48 +1,46 @@
-use std::fmt::Result;
-
+use crate::borrowing::state::{GROUP_OIS, PAIR_OIS};
 use crate::constants::MAX_OPEN_NEGATIVE_PNL_P;
 use crate::error::ContractError;
-use crate::pairs::state::{FEES, GROUPS, PAIRS};
+use crate::pairs::state::{
+    FEES, GROUPS, ORACLE_ADDRESS, PAIRS, PAIR_CUSTOM_MAX_LEVERAGE,
+};
 use crate::price_impact::get_trade_price_impact;
 use crate::trading::state::{
-    LimitOrder, OpenLimitOrderType, Trade, TradeInfo, TradeType,
+    LimitOrder, OpenOrderType, Trade, TradeInfo, TradeType,
 };
 use cosmwasm_std::{
-    BankMsg, Coin, Decimal, Decimal256, Deps, DepsMut, Env, MessageInfo,
-    Response, Uint128,
+    to_json_binary, BankMsg, Coin, Decimal, Decimal256, Deps, DepsMut, Env,
+    MessageInfo, QueryRequest, Response, Storage, Uint128, WasmQuery,
 };
+use oracle::contract::OracleQueryMsg;
 
 pub fn open_trade(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     trade: Trade,
-    order_type: OpenLimitOrderType,
-    spread_reduction_id: u64,
-    max_slippage_p: Decimal256,
+    order_type: OpenOrderType,
 ) -> Result<Response, ContractError> {
     let user = info.sender.clone();
-
-    let position_size_collateral =
-        get_position_size_collateral(trade.collateral_amount, trade.leverage);
-    let position_size_usd = get_usd_normalized_value(
-        trade.collateral_index,
-        position_size_collateral,
-    );
-
-    within_exposure_limits(
-        trade.pair_index,
-        trade.collateral_index,
-        trade.long,
-        position_size_collateral,
-    )?;
+    let mut trade = trade.clone();
 
     let pair = PAIRS.load(deps.storage, trade.pair_index)?;
+    let base_price = get_token_price(deps, pair.oracle_index)?;
     let pair_fees = FEES.load(deps.storage, pair.fee_index)?;
     let group = GROUPS.load(deps.storage, pair.group_index)?;
 
+    let position_size_collateral =
+        get_position_size_collateral(trade.collateral_amount, trade.leverage);
+    let collateral_price = get_token_price(deps, trade.collateral_index)?;
+
+    let position_size_usd =
+        get_usd_normalized_value(collateral_price, position_size_collateral)?;
+
+    trade.open_price = base_price;
+
     // trade collateral usd value need to be >= 5x min trade fee usd (collateral left after trade opened >= 80%)
-    if Decimal::from_ratio(position_size_usd, trade.leverage)
+    if position_size_usd
+        .checked_div(Decimal::from_ratio(trade.leverage, Uint128::one()))?
         < pair_fees
             .get_min_fee_usd()?
             .checked_mul(Decimal::from_atomics(5_u32, 0)?)?
@@ -55,41 +53,89 @@ pub fn open_trade(
         return Err(ContractError::InvalidLeverage);
     }
 
-    let (price_impact_p, _) = get_trade_price_impact(
-        deps.storage,
-        Decimal::zero(),
-        trade.pair_index,
-        trade.long,
-        position_size_usd,
-    )?;
-
-    if price_impact_p.checked_mul(Decimal::from_atomics(trade.leverage, 0)?)?
-        > MAX_OPEN_NEGATIVE_PNL_P
+    if let Some(pair_max_leverage) =
+        PAIR_CUSTOM_MAX_LEVERAGE.may_load(deps.storage, trade.pair_index)?
     {
-        return Err(ContractError::PriceImpactTooHigh);
+        if trade.leverage > pair_max_leverage {
+            return Err(ContractError::InvalidLeverage);
+        }
     }
 
-    // receive collateral and validate it
-    if trade.trade_type != TradeType::Trade {
-        // limit or stop orders
+    if trade.trade_type != TradeType::Market {
         let trade_info = TradeInfo {
             created_block: env.block.height,
             tp_last_updated_block: env.block.height,
             sl_last_updated_block: env.block.height,
-            max_slippage_p: max_slippage_p,
             last_oi_update_ts: env.block.time,
-            collateral_price_usd: get_collateral_price_usd(
-                trade.collateral_index,
-            ),
         };
-        store_trade(trade, trade_info)
+        store_order(trade, trade_info)
     } else {
-        execute_market_order(trade)
+        validate_trade(
+            env,
+            deps,
+            trade,
+            position_size_usd,
+            collateral_price,
+            base_price,
+            pair.spread_p,
+        )?;
+
+        execute_order(deps, env, trade.clone(), None, order_type)?;
     }
 
     register_potential_referrer(&info, &trade)?;
-
     Ok(Response::new().add_attribute("action", "open_trade"))
+}
+
+fn store_order(trade: Trade, trade_info: TradeInfo) {
+    todo!()
+}
+
+fn execute_order(
+    deps: DepsMut,
+    env: Env,
+    trade: Trade,
+    trade_info: Option<TradeInfo>,
+    order_type: OpenOrderType,
+) -> Result<(), ContractError> {
+    let mut final_trade = trade.clone();
+    final_trade.collateral_amount -= process_opening_fees(
+        deps,
+        trade,
+        get_position_size_collateral(trade.collateral_amount, trade.leverage),
+        order_type,
+    )?;
+
+    store_trade(deps, final_trade, trade_info);
+
+    Ok(())
+}
+
+fn process_opening_fees(
+    deps: DepsMut,
+    trade: Trade,
+    leverage: Uint128,
+    order_type: OpenOrderType,
+) -> Result<Uint128, ContractError> {
+    todo!()
+}
+
+fn store_pending_order(trade: Trade, trade_info: TradeInfo) {
+    todo!()
+}
+
+fn get_token_price(
+    deps: DepsMut,
+    oracle_index: u64,
+) -> Result<Decimal, ContractError> {
+    let query_msg = OracleQueryMsg::GetPrice { oracle_index };
+    let request: WasmQuery = WasmQuery::Smart {
+        contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
+        msg: to_json_binary(&query_msg)?,
+    };
+
+    let response: Decimal = deps.querier.query(&QueryRequest::Wasm(request))?;
+    Ok(response)
 }
 
 fn register_potential_referrer(
@@ -103,26 +149,122 @@ fn execute_market_order(trade: Trade) {
     todo!()
 }
 
-fn store_trade(trade: Trade, trade_info: TradeInfo) {
+fn store_trade(deps: DepsMut, trade: Trade, trade_info: Option<TradeInfo>) {
     todo!()
+}
+
+fn validate_trade(
+    env: Env,
+    deps: DepsMut,
+    trade: Trade,
+    position_size_usd: Decimal,
+    collateral_price: Decimal,
+    base_price: Decimal,
+    spread_p: Decimal,
+) -> Result<(), ContractError> {
+    let position_size_collateral =
+        get_position_size_collateral(trade.collateral_amount, trade.leverage);
+
+    if base_price.is_zero() {
+        return Err(ContractError::TradeInvalid);
+    }
+
+    let max_slippage = trade.wanted_price * trade.max_slippage_p;
+    if trade.long && base_price > trade.wanted_price + max_slippage {
+        return Err(ContractError::TradeInvalid);
+    }
+
+    if !trade.long && base_price < trade.wanted_price - max_slippage {
+        return Err(ContractError::TradeInvalid);
+    }
+
+    if !trade.tp.is_zero()
+        && ((trade.long && base_price >= trade.tp)
+            || (!trade.long && base_price <= trade.tp))
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+
+    if !trade.sl.is_zero()
+        && ((trade.long && base_price <= trade.sl)
+            || (!trade.long && base_price >= trade.sl))
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+
+    let group_index = PAIRS.load(deps.storage, trade.pair_index)?.group_index;
+
+    within_exposure_limits(
+        deps.storage,
+        trade.pair_index,
+        group_index,
+        trade.collateral_index,
+        trade.long,
+        position_size_collateral,
+    )?;
+
+    let (price_impact_p, _) = get_trade_price_impact(
+        deps.storage,
+        get_market_execution_price(base_price, spread_p, trade.long),
+        trade.pair_index,
+        trade.long,
+        position_size_usd,
+    )?;
+
+    if price_impact_p.checked_mul(Decimal::from_atomics(trade.leverage, 0)?)?
+        > MAX_OPEN_NEGATIVE_PNL_P
+    {
+        return Err(ContractError::PriceImpactTooHigh);
+    }
+
+    Ok(())
+}
+
+fn get_market_execution_price(
+    price: Decimal,
+    spread_p: Decimal,
+    long: bool,
+) -> Decimal {
+    let price_diff = price.checked_mul(spread_p).unwrap();
+    if long {
+        return price.checked_add(price_diff).unwrap();
+    } else {
+        return price.checked_sub(price_diff).unwrap();
+    }
 }
 
 fn within_exposure_limits(
+    storage: &dyn Storage,
     pair_index: u64,
-    collateral_index: u8,
+    group_index: u64,
+    collateral_index: u64,
     long: bool,
     position_size_collateral: Uint128,
 ) -> Result<(), ContractError> {
-    todo!()
+    let group_ois = GROUP_OIS.load(storage, (collateral_index, group_index))?;
+    let pair_ois = PAIR_OIS.load(storage, (collateral_index, pair_index))?;
+
+    let pair_oi_collateral = if long { pair_ois.long } else { pair_ois.short };
+    let group_oi_collateral = if long {
+        group_ois.long
+    } else {
+        group_ois.short
+    };
+
+    if !(position_size_collateral + pair_oi_collateral <= pair_ois.max
+        && position_size_collateral + group_oi_collateral <= group_ois.max)
+    {
+        return Err(ContractError::ExposureLimitReached);
+    }
+    Ok(())
 }
 
 fn get_usd_normalized_value(
-    collateral_index: u8,
+    collateral_price: Decimal,
     collateral_value: Uint128,
-) -> Uint128 {
-    return get_collateral_price_usd(collateral_index)
-        .checked_mul(collateral_value.into())
-        .unwrap();
+) -> Result<Decimal, ContractError> {
+    Ok(collateral_price
+        .checked_mul(Decimal::from_atomics(collateral_value, 0)?)?)
 }
 
 fn get_collateral_price_usd(collateral_index: u8) -> Decimal {

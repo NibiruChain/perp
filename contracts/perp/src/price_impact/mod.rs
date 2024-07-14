@@ -35,18 +35,17 @@ fn _get_trade_price_impact(
     open_price: Decimal,
     long: bool,
     start_open_interest_usd: Uint128,
-    trade_open_interest_usd: Uint128,
+    trade_open_interest_usd: Decimal,
     one_percent_depth_usd: Uint128,
 ) -> Result<(Decimal, Decimal), ContractError> {
     if one_percent_depth_usd.is_zero() {
         return Ok((Decimal::zero(), open_price));
     }
+    let two = Decimal::one() + Decimal::one();
 
-    let price_impact_p = Decimal::from_ratio(
-        start_open_interest_usd
-            + trade_open_interest_usd.checked_div(2_u64.into())?,
-        one_percent_depth_usd,
-    );
+    let price_impact_p = (Decimal::from_atomics(start_open_interest_usd, 0)?
+        + trade_open_interest_usd.checked_div(two)?)
+    .checked_div(Decimal::from_atomics(one_percent_depth_usd, 0)?)?;
 
     let price_impact = price_impact_p * open_price;
     let price_after_impact = if long {
@@ -92,7 +91,7 @@ pub fn get_trade_price_impact(
     open_price: Decimal,
     pair_index: u64,
     long: bool,
-    trade_open_interest_usd: Uint128,
+    trade_open_interest_usd: Decimal,
 ) -> Result<(Decimal, Decimal), ContractError> {
     let pair_depth = PAIR_DEPTHS.load(storage, pair_index)?;
 

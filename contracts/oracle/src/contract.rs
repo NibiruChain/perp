@@ -41,9 +41,17 @@ pub fn instantiate(
 #[ownable_execute]
 #[cw_serde]
 pub enum OraclesExecuteMsg {
-    SetPrice { pair_index: u64, price: Decimal256 },
-    SetDenom { pair_index: u64, denom: String },
-    DeleteDenom { pair_index: u64 },
+    SetPrice {
+        oracle_index: u64,
+        price: Decimal256,
+    },
+    SetDenom {
+        oracle_index: u64,
+        denom: String,
+    },
+    DeleteDenom {
+        oracle_index: u64,
+    },
 }
 
 #[ownable_query]
@@ -52,11 +60,11 @@ pub enum OraclesExecuteMsg {
 pub enum OracleQueryMsg {
     // Retrieve the price of the given pair
     #[returns(Decimal256)]
-    GetPrice { pair_index: u64 },
+    GetPrice { oracle_index: u64 },
 
     // Retrieve the denomination of the given pair
     #[returns(String)]
-    GetDenom { pair_index: u64 },
+    GetDenom { oracle_index: u64 },
 
     // Retrieve all denominations
     #[returns(Vec<String>)]
@@ -71,20 +79,24 @@ pub fn execute(
     msg: OraclesExecuteMsg,
 ) -> Result<Response, OwnershipError> {
     match msg {
-        OraclesExecuteMsg::SetPrice { pair_index, price } => {
-            execute_set_price(deps, env, info, pair_index, price)
-        }
-        OraclesExecuteMsg::SetDenom { pair_index, denom } => {
+        OraclesExecuteMsg::SetPrice {
+            oracle_index,
+            price,
+        } => execute_set_price(deps, env, info, oracle_index, price),
+        OraclesExecuteMsg::SetDenom {
+            oracle_index,
+            denom,
+        } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             let mut denoms = DENOMS.load(deps.storage)?;
-            denoms.insert(pair_index, denom);
+            denoms.insert(oracle_index, denom);
             DENOMS.save(deps.storage, &denoms)?;
             Ok(Response::default())
         }
-        OraclesExecuteMsg::DeleteDenom { pair_index } => {
+        OraclesExecuteMsg::DeleteDenom { oracle_index } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             let mut denoms = DENOMS.load(deps.storage)?;
-            denoms.remove(&pair_index);
+            denoms.remove(&oracle_index);
             DENOMS.save(deps.storage, &denoms)?;
             Ok(Response::default())
         }
@@ -97,18 +109,22 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: OracleQueryMsg) -> StdResult<Binary> {
     match msg {
-        OracleQueryMsg::GetPrice { pair_index } => get_price(deps, pair_index),
+        OracleQueryMsg::GetPrice { oracle_index } => {
+            get_price(deps, oracle_index)
+        }
         OracleQueryMsg::Ownership {} => Ok(to_json_binary(
             &nibiru_ownable::get_ownership(deps.storage)?,
         )?),
-        OracleQueryMsg::GetDenom { pair_index } => get_denom(deps, pair_index),
+        OracleQueryMsg::GetDenom { oracle_index } => {
+            get_denom(deps, oracle_index)
+        }
         OracleQueryMsg::GetDenoms {} => get_denoms(deps),
     }
 }
 
-fn get_denom(deps: Deps, pair_index: u64) -> StdResult<Binary> {
+fn get_denom(deps: Deps, oracle_index: u64) -> StdResult<Binary> {
     let denoms = DENOMS.load(deps.storage)?;
-    to_json_binary(&denoms.get(&pair_index))
+    to_json_binary(&denoms.get(&oracle_index))
 }
 
 fn get_denoms(deps: Deps) -> StdResult<Binary> {
@@ -116,9 +132,9 @@ fn get_denoms(deps: Deps) -> StdResult<Binary> {
     to_json_binary(&denoms)
 }
 
-fn get_price(deps: Deps, pair_index: u64) -> StdResult<Binary> {
+fn get_price(deps: Deps, oracle_index: u64) -> StdResult<Binary> {
     let prices = PRICES.load(deps.storage)?;
-    let price = prices.get(&pair_index).cloned();
+    let price = prices.get(&oracle_index).cloned();
     to_json_binary(&price)
 }
 
@@ -126,14 +142,14 @@ fn execute_set_price(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    pair_index: u64,
+    oracle_index: u64,
     price: Decimal256,
 ) -> Result<Response, OwnershipError> {
     nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
 
     let mut prices = PRICES.load(deps.storage)?;
     prices.insert(
-        pair_index,
+        oracle_index,
         Price {
             price,
             last_update_block: env.block.height,

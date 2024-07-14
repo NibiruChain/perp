@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    DecimalRangeExceeded, DivideByZeroError, OverflowError, StdError,
+    CheckedFromRatioError, DecimalRangeExceeded, DivideByZeroError,
+    OverflowError, StdError,
 };
 use nibiru_ownable::OwnershipError;
 use thiserror::Error;
@@ -77,6 +78,9 @@ pub enum ContractError {
 
     #[error("inssuficient collateral")]
     InsufficientCollateral,
+
+    #[error("exposure limit reached")]
+    ExposureLimitReached,
 }
 
 impl From<serde_json::Error> for ContractError {
@@ -105,6 +109,12 @@ impl From<DecimalRangeExceeded> for ContractError {
 
 impl From<DivideByZeroError> for ContractError {
     fn from(err: DivideByZeroError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<CheckedFromRatioError> for ContractError {
+    fn from(err: CheckedFromRatioError) -> Self {
         ContractError::SerdeJson(err.to_string())
     }
 }
