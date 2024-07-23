@@ -16,6 +16,9 @@ pub enum ContractError {
     #[error("not implemented")]
     NotImplemented,
 
+    #[error("pair {0} not found")]
+    PairNotFound(u64),
+
     #[error("operations are currently halted")]
     OperationsHalted,
 
@@ -81,6 +84,12 @@ pub enum ContractError {
 
     #[error("exposure limit reached")]
     ExposureLimitReached,
+
+    #[error("block order")]
+    BlockOrder,
+
+    #[error("overflow error")]
+    Overflow,
 }
 
 impl From<serde_json::Error> for ContractError {

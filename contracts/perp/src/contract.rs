@@ -46,15 +46,7 @@ pub fn execute(
             spread_reduction_id,
             slippage_p,
             referral,
-        } => open_trade(
-            deps,
-            env,
-            info,
-            trade,
-            order_type,
-            spread_reduction_id,
-            slippage_p,
-        ),
+        } => open_trade(deps, env, info, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { pair_index, index } => {
             close_trade_market(deps, env, info, pair_index, index)
         }

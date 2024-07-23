@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Decimal256;
+use cosmwasm_std::Decimal;
 
 use crate::trading::state::{
-    LimitOrder, OpenLimitOrder, OpenLimitOrderType, PendingMarketOrder,
+    LimitOrder, OpenLimitOrder, OpenOrderType, PendingMarketOrder,
     PendingNftOrder, Trade, TradeInfo, Trader,
 };
 
@@ -19,9 +19,9 @@ pub enum ExecuteMsg {
     /// - referral: Referral address for tracking referral rewards.
     OpenTrade {
         trade: Trade,
-        order_type: OpenLimitOrderType,
+        order_type: OpenOrderType,
         spread_reduction_id: u64,
-        slippage_p: Decimal256,
+        slippage_p: Decimal,
         referral: String,
     },
 
@@ -41,9 +41,9 @@ pub enum ExecuteMsg {
     UpdateOpenLimitOrder {
         pair_index: u64,
         index: u64,
-        price: Decimal256,
-        tp: Decimal256,
-        sl: Decimal256,
+        price: Decimal,
+        tp: Decimal,
+        sl: Decimal,
     },
 
     /// Cancels the open limit order.
@@ -60,7 +60,7 @@ pub enum ExecuteMsg {
     UpdateTp {
         pair_index: u64,
         index: u64,
-        new_tp: Decimal256,
+        new_tp: Decimal,
     },
 
     /// Updates the stop loss value for an open trade.
@@ -71,7 +71,7 @@ pub enum ExecuteMsg {
     UpdateSl {
         pair_index: u64,
         index: u64,
-        new_sl: Decimal256,
+        new_sl: Decimal,
     },
 
     /// Executes an NFT order for the specified parameters.
@@ -338,7 +338,7 @@ pub enum QueryMsg {
 
     /// CurrentPercentProfit returns the current percent profit for the given
     /// trade parameters
-    #[returns(Decimal256)]
+    #[returns(Decimal)]
     CurrentPercentProfit {
         open_price: u64,
         current_price: u64,

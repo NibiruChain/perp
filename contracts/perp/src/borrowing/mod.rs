@@ -9,7 +9,7 @@ use crate::error::ContractError;
 
 pub mod state;
 
-fn handle_trade_borrowing(
+pub fn handle_trade_borrowing(
     env: Env,
     storage: &mut dyn Storage,
     collateral_index: u64,

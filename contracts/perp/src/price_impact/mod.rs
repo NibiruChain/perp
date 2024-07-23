@@ -1,8 +1,12 @@
 pub mod state;
-use cosmwasm_std::{Decimal, Storage, Uint128};
+use cosmwasm_std::{Addr, Decimal, DepsMut, Storage, Timestamp, Uint128};
 use state::{OiWindowsSettings, OI_WINDOWS_SETTINGS, PAIR_DEPTHS, WINDOWS};
 
-use crate::error::ContractError;
+use crate::{
+    error::ContractError,
+    trade::get_token_price,
+    trading::state::{Trade, TradeInfo},
+};
 struct ConstantsUtils;
 impl ConstantsUtils {
     const P_10: f64 = 1e10;
@@ -14,6 +18,10 @@ fn get_window_id(timestamp: u64, settings: &OiWindowsSettings) -> u64 {
 
 fn get_current_window_id(settings: &OiWindowsSettings) -> u64 {
     get_window_id(current_timestamp(), settings)
+}
+
+fn current_timestamp() -> u64 {
+    todo!()
 }
 
 fn get_earliest_active_window_id(
@@ -35,17 +43,18 @@ fn _get_trade_price_impact(
     open_price: Decimal,
     long: bool,
     start_open_interest_usd: Uint128,
-    trade_open_interest_usd: Decimal,
+    trade_open_interest_usd: Uint128,
     one_percent_depth_usd: Uint128,
 ) -> Result<(Decimal, Decimal), ContractError> {
     if one_percent_depth_usd.is_zero() {
         return Ok((Decimal::zero(), open_price));
     }
-    let two = Decimal::one() + Decimal::one();
 
-    let price_impact_p = (Decimal::from_atomics(start_open_interest_usd, 0)?
-        + trade_open_interest_usd.checked_div(two)?)
-    .checked_div(Decimal::from_atomics(one_percent_depth_usd, 0)?)?;
+    let price_impact_p = Decimal::from_ratio(
+        start_open_interest_usd
+            + trade_open_interest_usd.checked_div(2_u64.into())?,
+        one_percent_depth_usd,
+    );
 
     let price_impact = price_impact_p * open_price;
     let price_after_impact = if long {
@@ -91,7 +100,7 @@ pub fn get_trade_price_impact(
     open_price: Decimal,
     pair_index: u64,
     long: bool,
-    trade_open_interest_usd: Decimal,
+    trade_open_interest_usd: Uint128,
 ) -> Result<(Decimal, Decimal), ContractError> {
     let pair_depth = PAIR_DEPTHS.load(storage, pair_index)?;
 
@@ -116,7 +125,64 @@ pub fn get_trade_price_impact(
     );
 }
 
-fn current_timestamp() -> u64 {
-    // This is a placeholder. In real implementation, you would get the actual current timestamp.
-    1_627_843_200
+pub fn add_price_impact_open_interest(
+    deps: DepsMut,
+    trade: Trade,
+    trade_info: TradeInfo,
+    position_collateral: Uint128,
+) -> Result<(), ContractError> {
+    let oi_window_settings = OI_WINDOWS_SETTINGS.load(deps.storage)?;
+    let current_window_id = get_current_window_id(&oi_window_settings);
+
+    let current_collateral_price =
+        get_token_price(deps, trade.collateral_index)?;
+    let oi_delta_usd = convert_collateral_to_usd(
+        trade.collateral_index,
+        trade.pair_index,
+        position_collateral,
+        current_collateral_price,
+    )?;
+
+    let is_partial = trade_info.last_oi_update_ts > Timestamp::from_nanos(0);
+
+    if is_partial
+        && (get_window_id(
+            trade_info.last_oi_update_ts.seconds(),
+            &oi_window_settings,
+        ) >= get_earliest_active_window_id(
+            current_window_id,
+            oi_window_settings.windows_count,
+        ))
+    {
+        let last_window_oi_usd =
+            get_trade_last_window_oi_usd(trade.user, trade.pair_index);
+        remove_price_impact_open_interest(
+            trade.user,
+            trade.pair_index,
+            last_window_oi_usd,
+        );
+    }
+
+    Ok(())
+}
+
+fn remove_price_impact_open_interest(
+    trader: Addr,
+    index: u64,
+    last_window_oi_usd: u64,
+) -> u64 {
+    todo!()
+}
+
+fn get_trade_last_window_oi_usd(trader: Addr, index: u64) -> u64 {
+    todo!()
+}
+
+fn convert_collateral_to_usd(
+    collateral_index: u64,
+    pair_index: u64,
+    position_collateral: Uint128,
+    current_collateral_price: Decimal,
+) -> Result<u64, ContractError> {
+    todo!()
 }

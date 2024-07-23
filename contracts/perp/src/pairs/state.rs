@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Uint256};
+use cosmwasm_std::{Addr, Decimal, Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
 use std::collections::HashMap;
 
@@ -10,7 +10,7 @@ pub const GROUPS: Map<u64, Group> = Map::new("groups");
 pub const FEES: Map<u64, Fee> = Map::new("fees");
 pub const IS_PAIR_LISTED: Map<String, HashMap<String, bool>> =
     Map::new("is_pair_listed");
-pub const PAIR_CUSTOM_MAX_LEVERAGE: Map<u64, u64> =
+pub const PAIR_CUSTOM_MAX_LEVERAGE: Map<u64, Uint128> =
     Map::new("pair_custom_max_leverage");
 
 pub const PAIRS_COUNT: Item<Uint256> = Item::new("pairs_count");
@@ -39,8 +39,8 @@ impl Pair {
 pub struct Group {
     pub name: String,
     pub job: [u8; 32],
-    pub min_leverage: u64,
-    pub max_leverage: u64,
+    pub min_leverage: Uint128,
+    pub max_leverage: Uint128,
 }
 
 #[cw_serde]
@@ -54,11 +54,12 @@ pub struct Fee {
 }
 
 impl Fee {
-    pub fn get_min_fee_usd(&self) -> Result<Decimal, ContractError> {
+    pub fn get_min_fee_usd(&self) -> Result<Uint128, ContractError> {
         let one = Decimal::one();
         let two = one + one;
 
-        return Ok(self.min_position_size_usd
-            * (self.open_fee_p.checked_mul(two)? + self.trigger_order_fee_p));
+        return Ok((self.min_position_size_usd
+            * (self.open_fee_p.checked_mul(two)? + self.trigger_order_fee_p))
+            .to_uint_floor());
     }
 }
