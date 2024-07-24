@@ -1,5 +1,6 @@
 pub mod borrowing;
 pub mod constants;
+pub mod fees;
 pub mod msgs;
 pub mod pairs;
 pub mod price_impact;

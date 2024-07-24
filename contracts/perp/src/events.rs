@@ -6,17 +6,16 @@ pub fn event_toggle_halt(is_halted: &bool) -> Event {
 }
 
 pub fn event_manager_updated(manager: &str) -> Event {
-    Event::new("gns_pair_infos_v6_1/manager_updated")
-        .add_attribute("manager", manager)
+    Event::new("manager_updated").add_attribute("manager", manager)
 }
 
 pub fn event_max_negative_pnl_on_open_p_updated(value: &u128) -> Event {
-    Event::new("gns_pair_infos_v6_1/max_negative_pnl_on_open_p_updated")
+    Event::new("max_negative_pnl_on_open_p_updated")
         .add_attribute("value", value.to_string())
 }
 
 pub fn event_pair_params_updated(pair_index: &u64, value: &str) -> Event {
-    Event::new("gns_pair_infos_v6_1/pair_params_updated")
+    Event::new("pair_params_updated")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value", value)
 }
@@ -26,7 +25,7 @@ pub fn event_one_percent_depth_updated(
     value_above: &u128,
     value_below: &u128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/one_percent_depth_updated")
+    Event::new("one_percent_depth_updated")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value_above", value_above.to_string())
         .add_attribute("value_below", value_below.to_string())
@@ -36,7 +35,7 @@ pub fn event_rollover_fee_per_block_p_updated(
     pair_index: &u64,
     value: &u128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/rollover_fee_per_block_p_updated")
+    Event::new("rollover_fee_per_block_p_updated")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value", value.to_string())
 }
@@ -45,7 +44,7 @@ pub fn event_funding_fee_per_block_p_updated(
     pair_index: &u64,
     value: &u128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/funding_fee_per_block_p_updated")
+    Event::new("funding_fee_per_block_p_updated")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value", value.to_string())
 }
@@ -57,7 +56,7 @@ pub fn event_trade_initial_acc_fees_stored(
     rollover: &u128,
     funding: &i128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/trade_initial_acc_fees_stored")
+    Event::new("trade_initial_acc_fees_stored")
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("index", index.to_string())
@@ -70,14 +69,14 @@ pub fn event_acc_funding_fees_stored(
     value_long: &i128,
     value_short: &i128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/acc_funding_fees_stored")
+    Event::new("acc_funding_fees_stored")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value_long", value_long.to_string())
         .add_attribute("value_short", value_short.to_string())
 }
 
 pub fn event_acc_rollover_fees_stored(pair_index: &u64, value: &u128) -> Event {
-    Event::new("gns_pair_infos_v6_1/acc_rollover_fees_stored")
+    Event::new("acc_rollover_fees_stored")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("value", value.to_string())
 }
@@ -91,7 +90,7 @@ pub fn event_fees_charged(
     rollover_fees: &u128,
     funding_fees: &i128,
 ) -> Event {
-    Event::new("gns_pair_infos_v6_1/fees_charged")
+    Event::new("fees_charged")
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("long", long.to_string())
         .add_attribute("collateral", collateral.to_string())
@@ -112,7 +111,7 @@ pub fn event_trade_market_executed(
     percent_profit: &i128,
     dai_sent_to_trader: &u128,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/market_executed")
+    Event::new("market_executed")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
@@ -137,7 +136,7 @@ pub fn event_limit_executed(
     percent_profit: &i128,
     dai_sent_to_trader: &u128,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/limit_executed")
+    Event::new("limit_executed")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("limit_index", limit_index.to_string())
         .add_attribute("trader", trader)
@@ -156,7 +155,7 @@ pub fn event_market_open_canceled(
     trader: &str,
     pair_index: &u64,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/market_open_canceled")
+    Event::new("market_open_canceled")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
@@ -168,7 +167,7 @@ pub fn event_market_close_canceled(
     pair_index: &u64,
     index: &u64,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/market_close_canceled")
+    Event::new("market_close_canceled")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
@@ -182,7 +181,7 @@ pub fn event_sl_updated(
     index: &u64,
     new_sl: &u128,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/sl_updated")
+    Event::new("sl_updated")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
@@ -196,7 +195,7 @@ pub fn event_sl_canceled(
     pair_index: &u64,
     index: &u64,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/sl_canceled")
+    Event::new("sl_canceled")
         .add_attribute("order_id", order_id.to_string())
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
@@ -210,7 +209,7 @@ pub fn event_liquidate(
     price: &u128,
     liq_id: &u64,
 ) -> Event {
-    Event::new("gns_trading_callbacks_v6_1/liquidate")
+    Event::new("liquidate")
         .add_attribute("trader", trader)
         .add_attribute("pair_index", pair_index.to_string())
         .add_attribute("index", index.to_string())

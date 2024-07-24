@@ -45,12 +45,12 @@ pub struct Group {
 
 #[cw_serde]
 pub struct Fee {
-    name: String,
-    open_fee_p: Decimal,          // 1e10 (% of position size)
-    close_fee_p: Decimal,         // 1e10 (% of position size)
-    oracle_fee_p: Decimal,        // 1e10 (% of position size)
-    trigger_order_fee_p: Decimal, // 1e10 (% of position size)
-    min_position_size_usd: Decimal, // 1e18 (collateral x leverage, useful for min fee)
+    pub name: String,
+    pub open_fee_p: Decimal,   // 1e10 (% of position size)
+    pub close_fee_p: Decimal,  // 1e10 (% of position size)
+    pub oracle_fee_p: Decimal, // 1e10 (% of position size)
+    pub trigger_order_fee_p: Decimal, // 1e10 (% of position size)
+    pub min_position_size_usd: Decimal, // 1e18 (collateral x leverage, useful for min fee)
 }
 
 impl Fee {

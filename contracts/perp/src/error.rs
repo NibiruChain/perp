@@ -90,6 +90,9 @@ pub enum ContractError {
 
     #[error("overflow error")]
     Overflow,
+
+    #[error("invalid max slippage")]
+    InvalidMaxSlippage,
 }
 
 impl From<serde_json::Error> for ContractError {

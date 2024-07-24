@@ -126,7 +126,7 @@ pub fn get_trade_price_impact(
 }
 
 pub fn add_price_impact_open_interest(
-    deps: DepsMut,
+    deps: &DepsMut,
     trade: Trade,
     trade_info: TradeInfo,
     position_collateral: Uint128,
@@ -135,7 +135,7 @@ pub fn add_price_impact_open_interest(
     let current_window_id = get_current_window_id(&oi_window_settings);
 
     let current_collateral_price =
-        get_token_price(deps, trade.collateral_index)?;
+        get_token_price(&deps, trade.collateral_index)?;
     let oi_delta_usd = convert_collateral_to_usd(
         trade.collateral_index,
         trade.pair_index,

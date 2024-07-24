@@ -1,7 +1,15 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Decimal256, Timestamp, Uint128};
 use cw_storage_plus::Map;
-use std::collections::HashMap;
+
+pub const COLLATERALS: Map<String, u64> = Map::new("collaterals");
+pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
+pub const TRADE_INFOS: Map<(Addr, u64), TradeInfo> = Map::new("trade_infos");
+pub const TRADE_PENDING_ORDERS_BLOCK: Map<(Addr, u64, PendingOrder), u64> =
+    Map::new("pending_orders");
+pub const PENDING_ORDERS: Map<(Addr, u64), PendingOrder> =
+    Map::new("pending_orders");
+pub const TRADER_STORED: Map<Addr, bool> = Map::new("trader_stored");
 
 #[cw_serde]
 pub struct Trader {
@@ -26,9 +34,6 @@ pub struct Trade {
 
     pub tp: Decimal,
     pub sl: Decimal,
-
-    pub wanted_price: Decimal,
-    pub max_slippage_p: Decimal,
 }
 
 #[cw_serde]
@@ -37,6 +42,7 @@ pub struct TradeInfo {
     pub tp_last_updated_block: u64,
     pub sl_last_updated_block: u64,
     pub last_oi_update_ts: Timestamp,
+    pub max_slippage_p: Decimal,
 }
 
 #[cw_serde]
@@ -173,12 +179,3 @@ pub enum OpenOrderType {
     /// limits of the order in the same direction.
     MOMENTUM,
 }
-
-pub const COLLATERALS: Map<String, u64> = Map::new("collaterals");
-pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
-pub const TRADE_INFOS: Map<(Addr, u64), TradeInfo> = Map::new("trade_infos");
-pub const TRADE_PENDING_ORDERS_BLOCK: Map<(Addr, u64, PendingOrder), u64> =
-    Map::new("pending_orders");
-pub const PENDING_ORDERS: Map<(Addr, u64), PendingOrder> =
-    Map::new("pending_orders");
-pub const TRADER_STORED: Map<Addr, bool> = Map::new("trader_stored");
