@@ -1,4 +1,8 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{
+    CheckedFromRatioError, DecimalRangeExceeded, DivideByZeroError,
+    OverflowError, StdError,
+};
+use nibiru_ownable::OwnershipError;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -11,6 +15,9 @@ pub enum ContractError {
 
     #[error("not implemented")]
     NotImplemented,
+
+    #[error("pair {0} not found")]
+    PairNotFound(u64),
 
     #[error("operations are currently halted")]
     OperationsHalted,
@@ -33,8 +40,14 @@ pub enum ContractError {
     #[error("maximum pending orders reached")]
     MaxPendingOrders,
 
+    #[error("order already being closed")]
+    AlreadyBeingClosed,
+
     #[error("price impact too high")]
     PriceImpactTooHigh,
+
+    #[error("outside of exposure limits")]
+    OutsideExposureLimits,
 
     #[error("no corresponding NFT for spread reduction")]
     NoCorrespondingNftSpreadReduction,
@@ -59,10 +72,61 @@ pub enum ContractError {
 
     #[error("invalid referral address")]
     InvalidReferral,
+
+    #[error("trade was not found")]
+    TradeNotFound,
+
+    #[error("trade invalid")]
+    TradeInvalid,
+
+    #[error("inssuficient collateral")]
+    InsufficientCollateral,
+
+    #[error("exposure limit reached")]
+    ExposureLimitReached,
+
+    #[error("block order")]
+    BlockOrder,
+
+    #[error("overflow error")]
+    Overflow,
+
+    #[error("invalid max slippage")]
+    InvalidMaxSlippage,
 }
 
 impl From<serde_json::Error> for ContractError {
     fn from(err: serde_json::Error) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<OwnershipError> for ContractError {
+    fn from(err: OwnershipError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<OverflowError> for ContractError {
+    fn from(err: OverflowError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<DecimalRangeExceeded> for ContractError {
+    fn from(err: DecimalRangeExceeded) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<DivideByZeroError> for ContractError {
+    fn from(err: DivideByZeroError) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<CheckedFromRatioError> for ContractError {
+    fn from(err: CheckedFromRatioError) -> Self {
         ContractError::SerdeJson(err.to_string())
     }
 }

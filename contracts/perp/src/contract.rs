@@ -1,6 +1,9 @@
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
 
-use crate::msgs::QueryMsg;
+use crate::trade::{
+    cancel_open_limit_order, close_trade_market, execute_limit_order,
+    open_trade, update_open_limit_order, update_sl, update_tp,
+};
 
 use cw2::set_contract_version;
 
@@ -24,6 +27,8 @@ pub fn instantiate(
         format!("crates.io:{CONTRACT_NAME}"),
         CONTRACT_VERSION,
     )?;
+
+    nibiru_ownable::initialize_owner(deps.storage, msg.owner.as_deref())?;
     Ok(Response::default())
 }
 
@@ -34,7 +39,6 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let contract_addr = env.contract.address.to_string();
     match msg {
         ExecuteMsg::OpenTrade {
             trade,
@@ -42,13 +46,9 @@ pub fn execute(
             spread_reduction_id,
             slippage_p,
             referral,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => open_trade(deps, env, info, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { pair_index, index } => {
-            // todo!();
-            Ok(Response::default())
+            close_trade_market(deps, env, info, pair_index, index)
         }
         ExecuteMsg::UpdateOpenLimitOrder {
             pair_index,
@@ -56,30 +56,22 @@ pub fn execute(
             price,
             tp,
             sl,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => update_open_limit_order(
+            deps, env, info, pair_index, index, price, tp, sl,
+        ),
         ExecuteMsg::CancelOpenLimitOrder { pair_index, index } => {
-            // todo!();
-            Ok(Response::default())
+            cancel_open_limit_order(deps, env, info, pair_index, index)
         }
         ExecuteMsg::UpdateTp {
             pair_index,
             index,
             new_tp,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => update_tp(deps, env, info, pair_index, index, new_tp),
         ExecuteMsg::UpdateSl {
             pair_index,
             index,
             new_sl,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => update_sl(deps, env, info, pair_index, index, new_sl),
         ExecuteMsg::ExecuteNftOrder {
             order_type,
             trader,
@@ -87,155 +79,13 @@ pub fn execute(
             index,
             nft_id,
             nft_type,
-        } => {
-            // todo!();
-            Ok(Response::default())
-        }
+        } => execute_limit_order(
+            deps, env, info, order_type, trader, pair_index, index, nft_id,
+            nft_type,
+        ),
         ExecuteMsg::AdminMsg { msg } => {
-            // todo!();
+            nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             Ok(Response::default())
-        }
-    }
-}
-
-#[cfg_attr(not(feature = "library"), cosmwasm_std::entry_point)]
-pub fn query(
-    deps: Deps,
-    _env: Env,
-    msg: QueryMsg,
-) -> Result<Binary, ContractError> {
-    match msg {
-        QueryMsg::HasOpenLimitOrder {
-            address: String,
-            pair_index,
-            index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::OpenTrades {
-            address: String,
-            pair_index,
-            index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::OpenTradesInfo {
-            address: String,
-            pair_index,
-            index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::GetOpenLimitOrder {
-            address: String,
-            pair_index,
-            index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::SpreadReductionsP { id: u64 } => {
-            todo!()
-        }
-        QueryMsg::MaxSlP {} => {
-            todo!()
-        }
-        QueryMsg::ReqIDPendingMarketOrder { order_id: u64 } => {
-            todo!()
-        }
-        QueryMsg::FirstEmptyTradeIndex {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::FirstEmptyOpenLimitIndex {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::NftSuccessTimelock {} => {
-            todo!()
-        }
-        QueryMsg::CurrentPercentProfit {
-            open_price,
-            current_price,
-            leverage: u64,
-            buy: bool,
-        } => {
-            todo!()
-        }
-        QueryMsg::ReqIDPendingNftOrder { order_id: u64 } => {
-            todo!()
-        }
-        QueryMsg::NftLastSuccess { nft_id: u64 } => {
-            todo!()
-        }
-        QueryMsg::GetReferral { address: String } => {
-            todo!()
-        }
-        QueryMsg::GetLeverageUnlocked { address: String } => {
-            todo!()
-        }
-        QueryMsg::OpenLimitOrdersCount {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::MaxOpenLimitOrdersPerPair {} => {
-            todo!()
-        }
-        QueryMsg::OpenTradesCount {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::PendingMarketOpenCount {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::PendingMarketCloseCount {
-            address: String,
-            pair_index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::MaxTradesPerPair {} => {
-            todo!()
-        }
-        QueryMsg::MaxTradesPerBlock {} => {
-            todo!()
-        }
-        QueryMsg::TradesPerBlock { pair_index: u64 } => {
-            todo!()
-        }
-        QueryMsg::PendingOrderIdsCount { address: String } => {
-            todo!()
-        }
-        QueryMsg::MaxPendingMarketOrders {} => {
-            todo!()
-        }
-        QueryMsg::MaxGainP {} => {
-            todo!()
-        }
-        QueryMsg::DefaultLeverageUnlocked {} => {
-            todo!()
-        }
-        QueryMsg::OpenInterestDai {
-            pair_index,
-            index: u64,
-        } => {
-            todo!()
-        }
-        QueryMsg::GetPendingOrderIds { address: String } => {
-            todo!()
-        }
-        QueryMsg::Traders { address: String } => {
-            todo!()
         }
     }
 }

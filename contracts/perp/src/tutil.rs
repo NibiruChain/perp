@@ -26,7 +26,7 @@ pub fn setup_contract(
     let info = mock_info(TEST_OWNER, &[]);
 
     let msg = InstantiateMsg {
-        owner: info.sender.to_string(),
+        owner: Some(info.sender.to_string()),
         to_addrs: to_addrs.into_iter().collect(),
         opers: opers.into_iter().collect(),
     };

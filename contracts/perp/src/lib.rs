@@ -1,5 +1,14 @@
+pub mod borrowing;
+pub mod constants;
+pub mod fees;
 pub mod msgs;
+pub mod pairs;
+pub mod price_impact;
+pub mod query;
+pub mod trade;
+pub mod trading;
 pub mod tutil;
+pub mod util;
 
 // #[cfg(not(feature = "library"))]
 // When imported with the "library" feature, contract.rs will not be compiled.
@@ -8,4 +17,3 @@ pub mod tutil;
 pub mod contract;
 pub mod error;
 pub mod events;
-pub mod state;
