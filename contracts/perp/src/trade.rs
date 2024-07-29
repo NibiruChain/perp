@@ -99,6 +99,7 @@ pub fn open_trade(
             sl_last_updated_block: height,
             last_oi_update_ts: time,
             max_slippage_p: max_slippage_p,
+            collateral_price_usd: collateral_price,
         };
 
         msgs = register_trade(deps, env, trade.clone(), trade_info, order_type)?;
@@ -127,7 +128,7 @@ fn register_trade(
         order_type,
     )?;
     final_trade.collateral_amount -= fees;
-    store_trade(deps, env, final_trade, Some(trade_info), None);
+    store_trade(deps, env, final_trade, Some(trade_info), None)?;
 
     Ok(msgs)
 }
@@ -371,6 +372,10 @@ fn store_trade(
                 sl_last_updated_block: env.block.height,
                 last_oi_update_ts: env.block.time,
                 max_slippage_p,
+                collateral_price_usd: get_collateral_price_usd(
+                    &deps.as_ref(),
+                    trade.collateral_index,
+                )?,
             }
         }
     };
@@ -393,13 +398,13 @@ fn store_trade(
         deps.storage,
         (trade.user.clone(), trade.pair_index.clone()),
         &trade.clone(),
-    );
+    )?;
     TRADE_INFOS.save(
         deps.storage,
         (trade.user.clone(), trade.pair_index.clone()),
         &trade_info,
-    );
-    TRADER_STORED.save(deps.storage, trade.user.clone(), &true);
+    )?;
+    TRADER_STORED.save(deps.storage, trade.user.clone(), &true)?;
 
     if trade.trade_type == TradeType::Trade {
         add_trade_oi_collateral(env, deps, trade, trade_info)?;
@@ -651,77 +656,77 @@ fn limit_sl_distance(
 }
 
 pub fn trigger_order(
-    deps: Deps,
-    order_id: u64,
+    _deps: Deps,
+    _order_id: u64,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn close_trade_market(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pair_index: u64,
-    index: u64,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _pair_index: u64,
+    _index: u64,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn update_open_limit_order(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pair_index: u64,
-    index: u64,
-    price: Decimal,
-    tp: Decimal,
-    sl: Decimal,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _pair_index: u64,
+    _index: u64,
+    _price: Decimal,
+    _tp: Decimal,
+    _sl: Decimal,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn cancel_open_limit_order(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pair_index: u64,
-    index: u64,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _pair_index: u64,
+    _index: u64,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn update_tp(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pair_index: u64,
-    index: u64,
-    new_tp: Decimal,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _pair_index: u64,
+    _index: u64,
+    _new_tp: Decimal,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn update_sl(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pair_index: u64,
-    index: u64,
-    new_sl: Decimal,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _pair_index: u64,
+    _index: u64,
+    _new_sl: Decimal,
 ) -> Result<Response, ContractError> {
     todo!()
 }
 
 pub fn execute_limit_order(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    order_type: LimitOrder,
-    trader: String,
-    pair_index: u64,
-    index: u64,
-    nft_id: u64,
-    nft_type: u8,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _order_type: LimitOrder,
+    _trader: String,
+    _pair_index: u64,
+    _index: u64,
+    _nft_id: u64,
+    _nft_type: u8,
 ) -> Result<Response, ContractError> {
     todo!()
 }

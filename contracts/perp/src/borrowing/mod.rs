@@ -13,7 +13,7 @@ pub fn handle_trade_borrowing(
     env: Env,
     storage: &mut dyn Storage,
     collateral_index: u64,
-    user: Addr,
+    _user: Addr,
     pair_index: u64,
     position_collateral: Uint128,
     open: bool,
@@ -43,7 +43,7 @@ pub fn handle_trade_borrowing(
         long,
         open,
         position_collateral,
-    );
+    )?;
     update_group_oi(
         storage,
         collateral_index,
@@ -51,7 +51,7 @@ pub fn handle_trade_borrowing(
         long,
         open,
         position_collateral,
-    );
+    )?;
 
     if open {
         reset_trade_borrowing_fees(
@@ -63,7 +63,7 @@ pub fn handle_trade_borrowing(
             open,
             position_collateral,
             block_number,
-        );
+        )?;
     }
     Ok(())
 }
@@ -119,9 +119,7 @@ fn update_group_oi(
 ) -> Result<OpenInterest, ContractError> {
     let mut group_oi =
         GROUP_OIS.load(storage, (collateral_index, group_index))?;
-
-    let (new_oi_long, new_oi_short, delta) =
-        update_oi(&mut group_oi, long, open, position_collateral);
+    update_oi(&mut group_oi, long, open, position_collateral);
 
     GROUP_OIS.save(storage, (collateral_index, group_index), &group_oi)?;
     Ok(group_oi)
@@ -136,9 +134,7 @@ fn update_pair_oi(
     position_collateral: Uint128,
 ) -> Result<OpenInterest, ContractError> {
     let mut pair_oi = PAIR_OIS.load(storage, (collateral_index, pair_index))?;
-
-    let (new_oi_long, new_oi_short, delta) =
-        update_oi(&mut pair_oi, long, open, position_collateral);
+    update_oi(&mut pair_oi, long, open, position_collateral);
 
     PAIR_OIS.save(storage, (collateral_index, pair_index), &pair_oi)?;
     Ok(pair_oi)

@@ -41,8 +41,9 @@ pub struct TradeInfo {
     pub created_block: u64,
     pub tp_last_updated_block: u64,
     pub sl_last_updated_block: u64,
-    pub last_oi_update_ts: Timestamp,
     pub max_slippage_p: Decimal,
+    pub last_oi_update_ts: Timestamp,
+    pub collateral_price_usd: Decimal, // collateral price at trade open
 }
 
 #[cw_serde]
