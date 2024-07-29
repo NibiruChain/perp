@@ -1,5 +1,3 @@
-use std::borrow::BorrowMut;
-
 use crate::borrowing::handle_trade_borrowing;
 use crate::borrowing::state::{GROUP_OIS, PAIR_OIS};
 use crate::constants::{
@@ -25,7 +23,7 @@ use cosmwasm_std::{
 use oracle::contract::OracleQueryMsg;
 
 pub fn open_trade(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     trade: Trade,
@@ -38,7 +36,7 @@ pub fn open_trade(
         .load(deps.storage, trade.clone().pair_index)
         .map_err(|_| ContractError::PairNotFound(trade.pair_index.clone()))?;
 
-    let base_price = get_token_price(&deps.as_ref(), pair.oracle_index)?;
+    let base_price = get_token_price(&deps.as_ref(), &pair.oracle_index)?;
 
     let pair_fees = FEES.load(deps.storage, pair.fee_index)?;
     let group = GROUPS.load(deps.storage, pair.group_index)?;
@@ -48,7 +46,7 @@ pub fn open_trade(
         trade.leverage.clone(),
     )?;
     let collateral_price =
-        get_token_price(&deps.as_ref(), trade.collateral_index.clone())?;
+        get_token_price(&deps.as_ref(), &trade.collateral_index.clone())?;
 
     let position_size_usd =
         get_usd_normalized_value(collateral_price, position_size_collateral)?;
@@ -84,7 +82,7 @@ pub fn open_trade(
             store_trade(deps, env, trade.clone(), None, Some(max_slippage_p))?;
     } else {
         validate_trade(
-            &deps,
+            deps.as_ref(),
             trade.clone(),
             position_size_usd,
             base_price.clone(),
@@ -114,7 +112,7 @@ pub fn open_trade(
 
 // Validate the trade and store it as a trade
 fn register_trade(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     trade: Trade,
     trade_info: TradeInfo,
@@ -122,8 +120,8 @@ fn register_trade(
 ) -> Result<Vec<BankMsg>, ContractError> {
     let mut final_trade = trade.clone();
     let (msgs, fees) = process_opening_fees(
-        &deps.as_ref(),
-        env,
+        deps,
+        env.clone(),
         trade.clone(),
         get_position_size_collateral(trade.collateral_amount, trade.leverage)?,
         order_type,
@@ -135,19 +133,19 @@ fn register_trade(
 }
 
 fn process_opening_fees(
-    deps: &Deps,
+    deps: &mut DepsMut,
     env: Env,
     trade: Trade,
     position_size_collateral: Uint128,
     order_type: OpenOrderType,
 ) -> Result<(Vec<BankMsg>, Uint128), ContractError> {
     let gov_price_collateral =
-        get_token_price(deps, GOV_PRICE_COLLATERAL_INDEX)?;
+        get_token_price(&deps.as_ref(), &GOV_PRICE_COLLATERAL_INDEX)?;
 
     let position_size_collateral = get_position_size_collateral_basis(
-        deps,
-        trade.collateral_index,
-        trade.pair_index,
+        &deps.as_ref(),
+        &trade.collateral_index,
+        &trade.pair_index,
         position_size_collateral,
     )?;
 
@@ -162,75 +160,86 @@ fn process_opening_fees(
 
     let gov_fee_collateral: Uint128 = distribute_gov_fee_collateral(
         deps,
-        env,
-        trade.collateral_index,
-        trade.user,
-        trade.pair_index,
+        env.clone(),
+        &trade.collateral_index,
+        trade.user.clone(),
+        &trade.pair_index,
         position_size_collateral,
         gov_price_collateral,
-        reward1 / 2,
+        Decimal::from_ratio(reward1, 2_u64).to_uint_floor(),
     )?;
 
     let reward2 = calculate_fee_amount(
-        deps,
+        &deps.as_ref(),
         env,
-        trade.user,
+        &trade.user,
         Decimal::from_atomics(position_size_collateral, 0)?
-            .checked_mul(pair_trigger_order_fee(deps, trade.pair_index)?)?
+            .checked_mul(pair_trigger_order_fee(
+                &deps.as_ref(),
+                trade.pair_index,
+            )?)?
             .to_uint_floor(),
     )?;
 
     total_fees_collateral +=
         gov_fee_collateral.checked_mul(2_u64.into())? + reward2;
 
-    let msgs: Vec<BankMsg> = vec![];
+    let mut msgs: Vec<BankMsg> = vec![];
     let reward3: Uint128;
     if order_type != OpenOrderType::MARKET {
-        reward3 = Decimal::from_ratio(
-            reward2.checked_mul(2_u64.into())?,
-            10_u64.into(),
-        )
-        .to_uint_floor();
+        reward3 =
+            Decimal::from_ratio(reward2.checked_mul(2_u64.into())?, 10_u64)
+                .to_uint_floor();
 
         msgs.extend(distribute_trigger_fee_gov(
-            trade.user,
+            &trade.user,
             trade.collateral_index,
             reward3,
             gov_price_collateral,
         )?)
+    } else {
+        reward3 = Uint128::zero();
     }
 
     msgs.extend(distribute_staking_fee_collateral(
         trade.collateral_index,
-        trade.user,
+        &trade.user,
         gov_fee_collateral + reward2 - reward3,
     )?);
 
     Ok((msgs, total_fees_collateral))
 }
 
+fn distribute_staking_fee_collateral(
+    _collateral_index: u64,
+    _user: &Addr,
+    _reward3: Uint128,
+) -> Result<Vec<BankMsg>, ContractError> {
+    todo!()
+}
+
 fn distribute_gov_fee_collateral(
-    deps: Deps,
+    deps: &mut DepsMut,
     env: Env,
-    collateral_index: u64,
+    collateral_index: &u64,
     user: Addr,
-    pair_index: u64,
+    pair_index: &u64,
     position_size_collateral: Uint128,
     gov_price_collateral: Decimal,
     referral_fee_collateral: Uint128,
 ) -> Result<Uint128, ContractError> {
     let gov_fee_collateral = get_gov_fee_collateral(
-        &deps,
+        &deps.as_ref(),
         env,
-        user,
-        pair_index,
+        user.clone(),
+        *pair_index,
         position_size_collateral,
         gov_price_collateral,
     )? - referral_fee_collateral;
 
     distribute_exact_gov_fee_collateral(
         deps,
-        collateral_index,
+        *collateral_index,
         user,
         gov_fee_collateral,
     )
@@ -242,7 +251,7 @@ fn get_gov_fee_collateral(
     user: Addr,
     pair_index: u64,
     position_size_collateral: Uint128,
-    gov_price_collateral: Decimal,
+    _gov_price_collateral: Decimal,
 ) -> Result<Uint128, ContractError> {
     let pair = PAIRS.load(deps.storage, pair_index)?;
     let fee = FEES.load(deps.storage, pair.fee_index)?;
@@ -250,7 +259,7 @@ fn get_gov_fee_collateral(
     calculate_fee_amount(
         deps,
         env,
-        user,
+        &user,
         Decimal::from_atomics(position_size_collateral, 0)?
             .checked_mul(fee.open_fee_p)?
             .to_uint_floor(),
@@ -258,21 +267,21 @@ fn get_gov_fee_collateral(
 }
 
 fn distribute_exact_gov_fee_collateral(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     collateral_index: u64,
-    user: Addr,
+    _user: Addr,
     gov_fee_collateral: Uint128,
 ) -> Result<Uint128, ContractError> {
     let mut pending_gov_fees =
-        PENDING_GOV_FEES.load(deps.storage, collateral_index)?;
+        PENDING_GOV_FEES.load(deps.as_ref().storage, collateral_index)?;
     pending_gov_fees += gov_fee_collateral;
     PENDING_GOV_FEES.save(deps.storage, collateral_index, &pending_gov_fees)?;
     Ok(pending_gov_fees)
 }
 
 fn distribute_trigger_fee_gov(
-    user: Addr,
-    collateral_index: u64,
+    _user: &Addr,
+    _collateral_index: u64,
     trigger_fee_collateral: Uint128,
     gov_price_collateral: Decimal,
 ) -> Result<Vec<BankMsg>, ContractError> {
@@ -283,7 +292,7 @@ fn distribute_trigger_fee_gov(
     Ok(distribute_trigger_reward(trigger_fee_gov))
 }
 
-fn distribute_trigger_reward(trigger_fee_gov: Uint128) -> Vec<BankMsg> {
+fn distribute_trigger_reward(_trigger_fee_gov: Uint128) -> Vec<BankMsg> {
     // todo - do we want to reward oracles?
     return Vec::new();
 }
@@ -300,13 +309,13 @@ fn pair_trigger_order_fee(
 
 fn get_position_size_collateral_basis(
     deps: &Deps,
-    collateral_index: u64,
-    pair_index: u64,
+    collateral_index: &u64,
+    pair_index: &u64,
     position_size_collateral: Uint128,
 ) -> Result<Uint128, ContractError> {
-    let pair = PAIRS.load(deps.storage, pair_index)?;
+    let pair = PAIRS.load(deps.storage, *pair_index)?;
     let min_fee = FEES.load(deps.storage, pair.fee_index)?.get_min_fee_usd()?;
-    let collateral_price = get_collateral_price_usd(deps, collateral_index)?;
+    let collateral_price = get_collateral_price_usd(deps, *collateral_index)?;
 
     let min_fee_collateral = Decimal::from_atomics(min_fee, 0)?
         .checked_div(collateral_price)?
@@ -317,9 +326,11 @@ fn get_position_size_collateral_basis(
 
 pub fn get_token_price(
     deps: &Deps,
-    oracle_index: u64,
+    oracle_index: &u64,
 ) -> Result<Decimal, ContractError> {
-    let query_msg = OracleQueryMsg::GetPrice { oracle_index };
+    let query_msg = OracleQueryMsg::GetPrice {
+        oracle_index: *oracle_index,
+    };
     let request: WasmQuery = WasmQuery::Smart {
         contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
         msg: to_json_binary(&query_msg)?,
@@ -337,7 +348,7 @@ fn register_potential_referrer(
 }
 
 fn store_trade(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     trade: Trade,
     trade_info: Option<TradeInfo>,
@@ -398,7 +409,7 @@ fn store_trade(
 
 fn add_trade_oi_collateral(
     env: Env,
-    deps: DepsMut,
+    deps: &mut DepsMut,
     trade: Trade,
     trade_info: TradeInfo,
 ) -> Result<(), ContractError> {
@@ -413,7 +424,7 @@ fn add_trade_oi_collateral(
 
 fn add_oi_collateral(
     env: Env,
-    deps: DepsMut,
+    deps: &mut DepsMut,
     trade: Trade,
     trade_info: TradeInfo,
     position_collateral: Uint128,
@@ -438,7 +449,7 @@ fn add_oi_collateral(
 }
 
 fn validate_trade(
-    deps: &DepsMut,
+    deps: Deps,
     trade: Trade,
     position_size_usd: Uint128,
     execution_price: Decimal,
@@ -558,7 +569,7 @@ fn get_collateral_price_usd(
     deps: &Deps,
     collateral_index: u64,
 ) -> Result<Decimal, ContractError> {
-    get_token_price(deps, collateral_index)
+    get_token_price(deps, &collateral_index)
 }
 
 fn get_position_size_collateral(

@@ -5,7 +5,7 @@ use cosmwasm_std::Decimal;
 
 use crate::trading::state::{
     LimitOrder, OpenLimitOrder, OpenOrderType, PendingMarketOrder,
-    PendingNftOrder, Trade, TradeInfo, Trader,
+    PendingNftOrder, Trade, TradeInfo,
 };
 
 #[cw_serde]

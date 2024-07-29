@@ -7,10 +7,6 @@ use crate::{
     trade::get_token_price,
     trading::state::{Trade, TradeInfo},
 };
-struct ConstantsUtils;
-impl ConstantsUtils {
-    const P_10: f64 = 1e10;
-}
 
 fn get_window_id(timestamp: u64, settings: &OiWindowsSettings) -> u64 {
     (timestamp - settings.start_ts) / settings.windows_duration
@@ -135,10 +131,12 @@ pub fn add_price_impact_open_interest(
     let current_window_id = get_current_window_id(&oi_window_settings);
 
     let current_collateral_price =
-        get_token_price(&deps, trade.collateral_index)?;
+        get_token_price(&deps.as_ref(), &trade.collateral_index)?;
+
+    // todo! fix unused variable oi_delta_usd
     let oi_delta_usd = convert_collateral_to_usd(
-        trade.collateral_index,
-        trade.pair_index,
+        &trade.collateral_index,
+        &trade.pair_index,
         position_collateral,
         current_collateral_price,
     )?;
@@ -155,7 +153,7 @@ pub fn add_price_impact_open_interest(
         ))
     {
         let last_window_oi_usd =
-            get_trade_last_window_oi_usd(trade.user, trade.pair_index);
+            get_trade_last_window_oi_usd(&trade.user, &trade.pair_index);
         remove_price_impact_open_interest(
             trade.user,
             trade.pair_index,
@@ -174,13 +172,13 @@ fn remove_price_impact_open_interest(
     todo!()
 }
 
-fn get_trade_last_window_oi_usd(trader: Addr, index: u64) -> u64 {
+fn get_trade_last_window_oi_usd(trader: &Addr, index: &u64) -> u64 {
     todo!()
 }
 
 fn convert_collateral_to_usd(
-    collateral_index: u64,
-    pair_index: u64,
+    collateral_index: &u64,
+    pair_index: &u64,
     position_collateral: Uint128,
     current_collateral_price: Decimal,
 ) -> Result<u64, ContractError> {

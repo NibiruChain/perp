@@ -31,10 +31,10 @@ pub struct TraderDailyInfo {
 }
 
 impl TraderDailyInfo {
-    pub fn new(fee_multiplier_cache: Decimal, points: Uint128) -> Self {
+    pub fn new() -> Self {
         Self {
-            fee_multiplier_cache,
-            points,
+            fee_multiplier_cache: Decimal::zero(),
+            points: Uint128::zero(),
         }
     }
 }
