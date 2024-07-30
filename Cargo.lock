@@ -1274,13 +1274,16 @@ dependencies = [
  "anyhow",
  "cosmwasm-schema 2.1.0",
  "cosmwasm-std 2.1.0",
+ "cw-multi-test",
  "cw-storage-plus 2.0.0",
  "cw2 2.0.0",
  "nibiru-ownable",
  "oracle",
+ "referrals",
  "schemars",
  "serde",
  "serde_json",
+ "test-app",
  "thiserror",
 ]
 
@@ -1430,6 +1433,20 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "referrals"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 2.1.0",
+ "cosmwasm-std 2.1.0",
+ "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
+ "nibiru-ownable",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

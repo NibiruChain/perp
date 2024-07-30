@@ -21,3 +21,9 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 oracle = { workspace = true }
 nibiru-ownable = { workspace = true }
+
+[dev-dependencies]
+test-app = { workspace = true }
+oracle = { workspace = true }
+referrals = { workspace = true }
+cw-multi-test = { workspace = true }

@@ -1,6 +1,6 @@
 use cosmwasm_std::{Deps, Env, MessageInfo};
 
-use crate::state::is_admin;
+use crate::{error::ContractError, state::is_admin};
 
 /// Check if the sender is the admin
 pub fn check_admin(
