@@ -15,3 +15,6 @@ cosmwasm-std = { workspace = true }
 cw-storage-plus = { workspace = true }
 cw-utils = { workspace = true }
 thiserror = { workspace = true }
+nibiru-ownable = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

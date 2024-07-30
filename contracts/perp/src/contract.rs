@@ -34,7 +34,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), cosmwasm_std::entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -46,7 +46,7 @@ pub fn execute(
             spread_reduction_id,
             slippage_p,
             referral,
-        } => open_trade(deps, env, info, trade, order_type, slippage_p),
+        } => open_trade(&mut deps, env, info, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { pair_index, index } => {
             close_trade_market(deps, env, info, pair_index, index)
         }

@@ -1,0 +1,13 @@
+[package]
+name = "test-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cosmwasm-std = { workspace = true }
+cosmwasm-schema = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+cw-utils = { version = "1.0.3" }
+prost = "0.12.3"
+cw-multi-test = { workspace = true }

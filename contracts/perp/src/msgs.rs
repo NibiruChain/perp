@@ -5,7 +5,7 @@ use cosmwasm_std::Decimal;
 
 use crate::trading::state::{
     LimitOrder, OpenLimitOrder, OpenOrderType, PendingMarketOrder,
-    PendingNftOrder, Trade, TradeInfo, Trader,
+    PendingNftOrder, Trade, TradeInfo,
 };
 
 #[cw_serde]
@@ -271,8 +271,6 @@ pub enum AdminExecuteMsg {
 pub struct InstantiateMsg {
     /// The owner is the only one that can use ExecuteMsg.
     pub owner: Option<String>,
-    pub to_addrs: BTreeSet<String>,
-    pub opers: BTreeSet<String>,
 }
 
 #[derive(QueryResponses)]

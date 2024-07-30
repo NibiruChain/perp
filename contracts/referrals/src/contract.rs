@@ -4,6 +4,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::{
+    error::ContractError,
     state::{
         add_admin, remove_admin, Tier, BASIS_POINTS, CODE_OWNERS,
         REFERRER_DISCOUNT_SHARES, REFERRER_TIERS, TIERS, TRADER_REFERRAL_CODES,

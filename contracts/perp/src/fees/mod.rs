@@ -7,7 +7,7 @@ pub mod state;
 pub fn calculate_fee_amount(
     deps: &Deps,
     env: Env,
-    trader: Addr,
+    trader: &Addr,
     normal_fee_amount_collateral: Uint128,
 ) -> Result<Uint128, ContractError> {
     let trader_daily_info: TraderDailyInfo = TRADER_DAILY_INFOS
@@ -15,7 +15,7 @@ pub fn calculate_fee_amount(
             deps.storage,
             (trader.to_string(), get_current_day(env.block.time)),
         )
-        .ok(TraderDailyInfo::new(0, 0))?;
+        .unwrap_or_else(|_| TraderDailyInfo::new());
 
     if trader_daily_info.fee_multiplier_cache.is_zero() {
         return Ok(normal_fee_amount_collateral);
