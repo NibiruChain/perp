@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use cosmwasm_schema::serde::de::DeserializeOwned;
-use cosmwasm_std::{from_json, Addr, Coin, Empty, StdError};
+use cosmwasm_std::{from_json, Addr, Coin, Decimal, Empty, StdError};
 use cw_multi_test::{
     error::AnyResult, BankSudo, Contract, ContractWrapper, Executor,
 };
+use perp::pairs::state::PAIRS;
 use test_app::Simapp;
 
 struct Contracts {
@@ -85,6 +88,8 @@ impl Default for App {
                 perp_owner.clone(),
                 &perp::msgs::InstantiateMsg {
                     owner: Some(perp_owner.clone().into_string()),
+                    oracle_address: Some(oracle.to_string()),
+                    staking_address: None,
                 },
                 &[],
                 "perp",
@@ -131,5 +136,55 @@ impl App {
                 .into(),
             )
             .unwrap();
+    }
+
+    pub fn create_default_pairs(&mut self) {
+        let mut pairs: HashMap<u64, perp::pairs::state::Pair> = HashMap::new();
+
+        pairs.insert(
+            0,
+            perp::pairs::state::Pair {
+                from: "btc".to_string(),
+                to: "usd".to_string(),
+                spread_p: Decimal::zero(),
+                oracle_index: 0,
+                group_index: 0,
+                fee_index: 0,
+            },
+        );
+
+        pairs.insert(
+            1,
+            perp::pairs::state::Pair {
+                from: "eth".to_string(),
+                to: "usd".to_string(),
+                spread_p: Decimal::zero(),
+                oracle_index: 0,
+                group_index: 0,
+                fee_index: 0,
+            },
+        );
+
+        let message = perp::msgs::AdminExecuteMsg::SetPairs {
+            pairs: pairs.clone(),
+        };
+        self.simapp
+            .execute_contract(
+                self.perp_owner.clone(),
+                self.perp_addr.clone(),
+                &perp::msgs::ExecuteMsg::AdminMsg { msg: message },
+                &vec![],
+            )
+            .unwrap();
+
+        // assert pairs are created
+        let storage = &*self.simapp.contract_storage(&self.perp_addr);
+        let pair_1 = PAIRS.load(storage, 0).unwrap();
+        let pair_2 = PAIRS.load(storage, 1).unwrap();
+
+        assert_eq!(&pair_1, pairs.get(&0).unwrap());
+        assert_eq!(&pair_2, pairs.get(&1).unwrap());
+
+        // asset pair are listed
     }
 }

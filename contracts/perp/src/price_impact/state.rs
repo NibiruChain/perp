@@ -7,9 +7,11 @@ pub const OI_WINDOWS_SETTINGS: Item<OiWindowsSettings> =
     Item::new("oi_windows_settings");
 pub const WINDOWS: Map<(u64, u64, u64), PairOi> = Map::new("windows");
 pub const PAIR_DEPTHS: Map<u64, PairDepth> = Map::new("pair_depths");
-pub const TRADE_PRICE_IMPACT_INFOS: Item<
-    HashMap<(Addr, u32), TradePriceImpactInfo>,
-> = Item::new("trade_price_impact_infos");
+
+// todo: check why it's not used
+// pub const TRADE_PRICE_IMPACT_INFOS: Item<
+//     HashMap<(Addr, u32), TradePriceImpactInfo>,
+// > = Item::new("trade_price_impact_infos");
 
 #[cw_serde]
 pub struct OiWindowsSettings {

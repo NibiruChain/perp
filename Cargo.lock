@@ -1189,6 +1189,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibiru-std"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae5048c0101bb447b1f70a0cb6f30c580299a1ef68a9bc9d29ab5f6498ddc5c6"
+dependencies = [
+ "anyhow",
+ "cosmwasm-schema 1.5.5",
+ "cosmwasm-std 1.5.2",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1278,6 +1294,7 @@ dependencies = [
  "cw-storage-plus 2.0.0",
  "cw2 2.0.0",
  "nibiru-ownable",
+ "nibiru-std",
  "oracle",
  "referrals",
  "schemars",
@@ -1369,6 +1386,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.68",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9091c90b0a32608e984ff2fa4091273cbdd755d54935c51d520887f4a1dbd5b0"
+dependencies = [
+ "prost",
 ]
 
 [[package]]

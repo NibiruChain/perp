@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 oracle = { workspace = true }
 nibiru-ownable = { workspace = true }
+nibiru-std = { workspace = true }
 
 [dev-dependencies]
 test-app = { workspace = true }

@@ -8,17 +8,18 @@ use crate::fees::calculate_fee_amount;
 use crate::fees::state::PENDING_GOV_FEES;
 use crate::pairs::state::{
     FEES, GROUPS, ORACLE_ADDRESS, PAIRS, PAIR_CUSTOM_MAX_LEVERAGE,
+    STAKING_ADDRESS,
 };
 use crate::price_impact::{
     add_price_impact_open_interest, get_trade_price_impact,
 };
 use crate::trading::state::{
-    LimitOrder, OpenOrderType, Trade, TradeInfo, TradeType, TRADER_STORED,
-    TRADES, TRADE_INFOS,
+    LimitOrder, OpenOrderType, Trade, TradeInfo, TradeType, COLLATERALS,
+    TRADER_STORED, TRADES, TRADE_INFOS,
 };
 use cosmwasm_std::{
-    to_json_binary, Addr, BankMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    QueryRequest, Response, Storage, Uint128, WasmQuery,
+    to_json_binary, Addr, BankMsg, Coin, Decimal, Deps, DepsMut, Env,
+    MessageInfo, QueryRequest, Response, Storage, Uint128, WasmQuery,
 };
 use oracle::contract::OracleQueryMsg;
 
@@ -203,6 +204,7 @@ fn process_opening_fees(
     }
 
     msgs.extend(distribute_staking_fee_collateral(
+        &deps.as_ref(),
         trade.collateral_index,
         &trade.user,
         gov_fee_collateral + reward2 - reward3,
@@ -212,11 +214,20 @@ fn process_opening_fees(
 }
 
 fn distribute_staking_fee_collateral(
-    _collateral_index: u64,
+    deps: &Deps,
+    collateral_index: u64,
     _user: &Addr,
-    _reward3: Uint128,
+    reward3: Uint128,
 ) -> Result<Vec<BankMsg>, ContractError> {
-    todo!()
+    let message = BankMsg::Send {
+        to_address: STAKING_ADDRESS.load(deps.storage)?.to_string(),
+        amount: vec![Coin::new(
+            reward3,
+            COLLATERALS.load(deps.storage, collateral_index)?,
+        )],
+    };
+
+    Ok(vec![message])
 }
 
 fn distribute_gov_fee_collateral(
@@ -281,8 +292,8 @@ fn distribute_exact_gov_fee_collateral(
 }
 
 fn distribute_trigger_fee_gov(
-    _user: &Addr,
-    _collateral_index: u64,
+    _user: &Addr,           // for events
+    _collateral_index: u64, // for events
     trigger_fee_collateral: Uint128,
     gov_price_collateral: Decimal,
 ) -> Result<Vec<BankMsg>, ContractError> {

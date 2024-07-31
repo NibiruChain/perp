@@ -130,3 +130,9 @@ impl From<CheckedFromRatioError> for ContractError {
         ContractError::SerdeJson(err.to_string())
     }
 }
+
+impl From<anyhow::Error> for ContractError {
+    fn from(err: anyhow::Error) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}

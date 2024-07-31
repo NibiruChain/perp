@@ -2,14 +2,16 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Decimal256, Timestamp, Uint128};
 use cw_storage_plus::Map;
 
-pub const COLLATERALS: Map<String, u64> = Map::new("collaterals");
+pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
 pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
 pub const TRADE_INFOS: Map<(Addr, u64), TradeInfo> = Map::new("trade_infos");
-pub const TRADE_PENDING_ORDERS_BLOCK: Map<(Addr, u64, PendingOrder), u64> =
-    Map::new("pending_orders");
-pub const PENDING_ORDERS: Map<(Addr, u64), PendingOrder> =
-    Map::new("pending_orders");
 pub const TRADER_STORED: Map<Addr, bool> = Map::new("trader_stored");
+
+// todo! Why are these not used?
+// pub const PENDING_ORDERS: Map<(Addr, u64), PendingOrder> =
+// Map::new("pending_orders");
+// pub const TRADE_PENDING_ORDERS_BLOCK: Map<(Addr, u64, PendingOrder), u64> =
+//     Map::new("pending_orders");
 
 #[cw_serde]
 pub struct Trader {

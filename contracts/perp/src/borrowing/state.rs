@@ -9,9 +9,11 @@ pub const PAIR_GROUPS: Map<(u64, u64), Vec<BorrowingPairGroup>> =
 pub const PAIR_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
 pub const GROUPS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
 pub const GROUP_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
-pub const INITIAL_ACC_FEES: Item<
-    HashMap<(u64, Addr, u32), BorrowingInitialAccFees>,
-> = Item::new("initial_acc_fees");
+
+// todo: check why it's not used
+// pub const INITIAL_ACC_FEES: Item<
+//     HashMap<(u64, Addr, u32), BorrowingInitialAccFees>,
+// > = Item::new("initial_acc_fees");
 
 #[cw_serde]
 pub struct BorrowingData {

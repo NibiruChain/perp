@@ -1,11 +1,14 @@
-use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Decimal;
+use cosmwasm_std::{Addr, Decimal, Uint128};
 
-use crate::trading::state::{
-    LimitOrder, OpenLimitOrder, OpenOrderType, PendingMarketOrder,
-    PendingNftOrder, Trade, TradeInfo,
+use crate::{
+    borrowing::state::{BorrowingData, BorrowingPairGroup, OpenInterest},
+    fees::state::{FeeTier, TraderDailyInfo},
+    pairs::state::{Fee, Group, Pair},
+    price_impact::state::{OiWindowsSettings, PairDepth, PairOi},
+    trading::state::{LimitOrder, OpenOrderType, Trade, TradeInfo},
 };
 
 #[cw_serde]
@@ -99,178 +102,86 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub enum AdminExecuteMsg {
-    /// Handle tokens by either minting or burning the specified amount.
-    /// Parameters:
-    /// - address: The address to handle tokens for.
-    /// - amount: The amount of tokens to handle.
-    /// - mint: A boolean indicating whether to mint (true) or burn (false) tokens.
-    HandleTokens {
-        address: String,
-        amount: u64,
-        mint: bool,
+    // Pairs
+    SetPairs {
+        pairs: HashMap<u64, Pair>,
+    },
+    SetGroups {
+        groups: HashMap<u64, Group>,
+    },
+    SetFees {
+        fees: HashMap<u64, Fee>,
+    },
+    SetPairCustomMaxLeverage {
+        pair_custom_max_leverage: HashMap<u64, Uint128>,
+    },
+    UpdateOracleAddress {
+        oracle_address: String,
+    },
+    UpdateStakingAddress {
+        staking_address: String,
     },
 
-    /// Transfer a specified amount of DAI from one address to another.
-    /// Parameters:
-    /// - from: The address to transfer DAI from.
-    /// - to: The address to transfer DAI to.
-    /// - amount: The amount of DAI to transfer.
-    TransferDai {
-        from: String,
-        to: String,
-        amount: u64,
+    // Fees
+    UpdateFeeTiers {
+        fee_tiers: [FeeTier; 8],
+    },
+    UpdatePendingGovFees {
+        pending_gov_fees: HashMap<u64, Uint128>,
+    },
+    UpdateTraderDailyInfos {
+        trader_daily_infos: HashMap<(String, u64), TraderDailyInfo>,
     },
 
-    /// Transfer LINK tokens to the price aggregator.
-    /// Parameters:
-    /// - from: The address to transfer LINK from.
-    /// - pair_index: The pair index for which the transfer is being made.
-    /// - leveraged_pos_dai: The leveraged position in DAI.
-    TransferLinkToAggregator {
-        from: String,
-        pair_index: u64,
-        leveraged_pos_dai: u64,
+    // Borrowing
+    UpdateBorrowingPairs {
+        borrowing_pairs: HashMap<(u64, u64), BorrowingData>,
+    },
+    UpdateBorrowingPairGroups {
+        pair_groups: HashMap<(u64, u64), Vec<BorrowingPairGroup>>,
+    },
+    UpdateBorrowingPairOis {
+        pair_ois: HashMap<(u64, u64), OpenInterest>,
+    },
+    UpdateBorrowingGroups {
+        groups: HashMap<(u64, u64), BorrowingData>,
+    },
+    UpdateBorrowingGroupOis {
+        group_ois: HashMap<(u64, u64), OpenInterest>,
     },
 
-    /// Unregister a trade.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - pair_index: The pair index of the trade.
-    /// - index: The index of the trade.
-    UnregisterTrade {
-        trader: String,
-        pair_index: u64,
-        index: u64,
+    // Price impact
+    UpdateOiWindowsSettings {
+        oi_windows_settings: OiWindowsSettings,
+    },
+    UpdateWindows {
+        windows: HashMap<(u64, u64, u64), PairOi>,
+    },
+    UpdatePairDepths {
+        pair_depths: HashMap<u64, PairDepth>,
     },
 
-    /// Unregister a pending market order.
-    /// Parameters:
-    /// - order_id: The ID of the pending market order.
-    /// - is_open: A boolean indicating whether the order is an open order.
-    UnregisterPendingMarketOrder { order_id: u64, is_open: bool },
-
-    /// Unregister an open limit order.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - pair_index: The pair index of the order.
-    /// - index: The index of the order.
-    UnregisterOpenLimitOrder {
-        trader: String,
-        pair_index: u64,
-        index: u64,
+    // Trading
+    UpdateCollaterals {
+        collaterals: HashMap<u64, String>,
     },
-
-    /// Store a pending market order.
-    /// Parameters:
-    /// - order: The pending market order to store.
-    /// - order_id: The ID of the order.
-    /// - is_open: A boolean indicating whether the order is an open order.
-    StorePendingMarketOrder {
-        order: PendingMarketOrder,
-        order_id: u64,
-        is_open: bool,
+    UpdateTrades {
+        trades: HashMap<(Addr, u64), Trade>,
     },
-
-    /// Store a referral.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - referral: The address of the referral.
-    StoreReferral { trader: String, referral: String },
-
-    /// Update the stop-loss for a trade.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - pair_index: The pair index of the trade.
-    /// - index: The index of the trade.
-    /// - new_sl: The new stop-loss value.
-    UpdateSl {
-        trader: String,
-        pair_index: u64,
-        index: u64,
-        new_sl: u64,
+    UpdateTradeInfos {
+        trade_infos: HashMap<(Addr, u64), TradeInfo>,
     },
-
-    /// Update the take-profit for a trade.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - pair_index: The pair index of the trade.
-    /// - index: The index of the trade.
-    /// - new_tp: The new take-profit value.
-    UpdateTp {
-        trader: String,
-        pair_index: u64,
-        index: u64,
-        new_tp: u64,
+    UpdateTraderStored {
+        trader_stored: HashMap<Addr, bool>,
     },
-
-    /// Store an open limit order.
-    /// Parameters:
-    /// - order: The open limit order to store.
-    StoreOpenLimitOrder { order: OpenLimitOrder },
-
-    /// Store a pending NFT order.
-    /// Parameters:
-    /// - order: The pending NFT order to store.
-    /// - order_id: The ID of the order.
-    StorePendingNftOrder {
-        order: PendingNftOrder,
-        order_id: u64,
-    },
-
-    /// Update an open limit order.
-    /// Parameters:
-    /// - order: The open limit order to update.
-    UpdateOpenLimitOrder { order: OpenLimitOrder },
-
-    /// Increase NFT rewards.
-    /// Parameters:
-    /// - nft_id: The ID of the NFT.
-    /// - amount: The amount of rewards to increase.
-    IncreaseNftRewards { nft_id: u64, amount: u64 },
-
-    /// Set the last success block for an NFT.
-    /// Parameters:
-    /// - nft_id: The ID of the NFT.
-    SetNftLastSuccess { nft_id: u64 },
-
-    /// Update a trade.
-    /// Parameters:
-    /// - trade: The trade to update.
-    UpdateTrade { trade: Trade },
-
-    /// Unregister a pending NFT order.
-    /// Parameters:
-    /// - order_id: The ID of the pending NFT order.
-    UnregisterPendingNftOrder { order_id: u64 },
-
-    /// Distribute LP rewards.
-    /// Parameters:
-    /// - amount: The amount of rewards to distribute.
-    DistributeLpRewards { amount: u64 },
-
-    /// Increase referral rewards.
-    /// Parameters:
-    /// - referral: The address of the referral.
-    /// - amount: The amount of rewards to increase.
-    IncreaseReferralRewards { referral: String, amount: u64 },
-
-    /// Store a trade.
-    /// Parameters:
-    /// - trade: The trade to store.
-    /// - trade_info: The trade information to store.
-    StoreTrade { trade: Trade, trade_info: TradeInfo },
-
-    /// Set the leverage unlocked for a trader.
-    /// Parameters:
-    /// - trader: The address of the trader.
-    /// - leverage: The new leverage value.
-    SetLeverageUnlocked { trader: String, leverage: u64 },
 }
 
 #[cw_serde]
 pub struct InstantiateMsg {
     /// The owner is the only one that can use ExecuteMsg.
     pub owner: Option<String>,
+    pub staking_address: Option<String>,
+    pub oracle_address: Option<String>,
 }
 
 #[derive(QueryResponses)]

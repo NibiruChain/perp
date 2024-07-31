@@ -4,13 +4,15 @@ use cw_storage_plus::{Item, Map};
 
 pub const FEE_TIERS: Item<[FeeTier; 8]> = Item::new("fee_tiers");
 pub const PENDING_GOV_FEES: Map<u64, Uint128> = Map::new("fees");
-pub const GROUP_VOLUME_MULTIPLIERS: Map<u64, Decimal> =
-    Map::new("group_volume_multipliers");
-pub const TRADER_INFOS: Map<(u64, String), TraderInfo> =
-    Map::new("trader_infos");
 // trader -> day -> TraderDailyInfo
 pub const TRADER_DAILY_INFOS: Map<(String, u64), TraderDailyInfo> =
     Map::new("trader_daily_infos");
+
+// todo: why not used
+// pub const TRADER_INFOS: Map<(u64, String), TraderInfo> =
+// Map::new("trader_infos");
+// pub const GROUP_VOLUME_MULTIPLIERS: Map<u64, Decimal> =
+//     Map::new("group_volume_multipliers");
 
 #[cw_serde]
 pub struct FeeTier {
