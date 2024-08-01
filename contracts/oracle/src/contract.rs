@@ -1,23 +1,21 @@
-use std::collections::HashMap;
-
 use cosmwasm_schema::{cw_serde, QueryResponses};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult,
+    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult,
 };
-use cw_storage_plus::Item;
+use cw_storage_plus::Map;
 use nibiru_ownable::{ownable_execute, ownable_query, OwnershipError};
 
 #[cw_serde]
 pub struct Price {
     pub last_update_block: u64,
-    pub price: Decimal256,
+    pub price: Decimal,
 }
 
-pub const DENOMS: Item<HashMap<u64, String>> = Item::new("denoms");
-pub const PRICES: Item<HashMap<u64, Price>> = Item::new("prices");
+pub const PRICES: Map<u64, Price> = Map::new("prices");
+pub const COLLATERAL_PRICES: Map<u64, Price> = Map::new("collateral_prices");
 
 pub const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -41,17 +39,8 @@ pub fn instantiate(
 #[ownable_execute]
 #[cw_serde]
 pub enum OraclesExecuteMsg {
-    SetPrice {
-        oracle_index: u64,
-        price: Decimal256,
-    },
-    SetDenom {
-        oracle_index: u64,
-        denom: String,
-    },
-    DeleteDenom {
-        oracle_index: u64,
-    },
+    SetPrice { index: u64, price: Decimal },
+    SetCollateralPrice { index: u64, price: Decimal },
 }
 
 #[ownable_query]
@@ -59,16 +48,11 @@ pub enum OraclesExecuteMsg {
 #[derive(QueryResponses)]
 pub enum OracleQueryMsg {
     // Retrieve the price of the given pair
-    #[returns(Decimal256)]
-    GetPrice { oracle_index: u64 },
+    #[returns(Decimal)]
+    GetPrice { index: u64 },
 
-    // Retrieve the denomination of the given pair
-    #[returns(String)]
-    GetDenom { oracle_index: u64 },
-
-    // Retrieve all denominations
-    #[returns(Vec<String>)]
-    GetDenoms {},
+    #[returns(Decimal)]
+    GetCollateralPrice { index: u64 },
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -79,25 +63,30 @@ pub fn execute(
     msg: OraclesExecuteMsg,
 ) -> Result<Response, OwnershipError> {
     match msg {
-        OraclesExecuteMsg::SetPrice {
-            oracle_index,
-            price,
-        } => execute_set_price(deps, env, info, oracle_index, price),
-        OraclesExecuteMsg::SetDenom {
-            oracle_index,
-            denom,
-        } => {
+        OraclesExecuteMsg::SetPrice { index, price } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
-            let mut denoms = DENOMS.load(deps.storage)?;
-            denoms.insert(oracle_index, denom);
-            DENOMS.save(deps.storage, &denoms)?;
+            PRICES.save(
+                deps.storage,
+                index,
+                &Price {
+                    price,
+                    last_update_block: env.block.height,
+                },
+            )?;
+
             Ok(Response::default())
         }
-        OraclesExecuteMsg::DeleteDenom { oracle_index } => {
+        OraclesExecuteMsg::SetCollateralPrice { index, price } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
-            let mut denoms = DENOMS.load(deps.storage)?;
-            denoms.remove(&oracle_index);
-            DENOMS.save(deps.storage, &denoms)?;
+            COLLATERAL_PRICES.save(
+                deps.storage,
+                index,
+                &Price {
+                    price,
+                    last_update_block: env.block.height,
+                },
+            )?;
+
             Ok(Response::default())
         }
         OraclesExecuteMsg::UpdateOwnership(action) => {
@@ -109,55 +98,18 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: OracleQueryMsg) -> StdResult<Binary> {
     match msg {
-        OracleQueryMsg::GetPrice { oracle_index } => {
-            get_price(deps, oracle_index)
+        OracleQueryMsg::GetPrice { index } => {
+            let price = PRICES.load(deps.storage, index)?;
+            to_json_binary(&price)
+        }
+        OracleQueryMsg::GetCollateralPrice { index } => {
+            let price = COLLATERAL_PRICES.load(deps.storage, index)?;
+            to_json_binary(&price)
         }
         OracleQueryMsg::Ownership {} => Ok(to_json_binary(
             &nibiru_ownable::get_ownership(deps.storage)?,
         )?),
-        OracleQueryMsg::GetDenom { oracle_index } => {
-            get_denom(deps, oracle_index)
-        }
-        OracleQueryMsg::GetDenoms {} => get_denoms(deps),
     }
-}
-
-fn get_denom(deps: Deps, oracle_index: u64) -> StdResult<Binary> {
-    let denoms = DENOMS.load(deps.storage)?;
-    to_json_binary(&denoms.get(&oracle_index))
-}
-
-fn get_denoms(deps: Deps) -> StdResult<Binary> {
-    let denoms = DENOMS.load(deps.storage)?;
-    to_json_binary(&denoms)
-}
-
-fn get_price(deps: Deps, oracle_index: u64) -> StdResult<Binary> {
-    let prices = PRICES.load(deps.storage)?;
-    let price = prices.get(&oracle_index).cloned();
-    to_json_binary(&price)
-}
-
-fn execute_set_price(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    oracle_index: u64,
-    price: Decimal256,
-) -> Result<Response, OwnershipError> {
-    nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
-
-    let mut prices = PRICES.load(deps.storage)?;
-    prices.insert(
-        oracle_index,
-        Price {
-            price,
-            last_update_block: env.block.height,
-        },
-    );
-    PRICES.save(deps.storage, &prices)?;
-
-    Ok(Response::default())
 }
 
 pub fn execute_update_ownership(
