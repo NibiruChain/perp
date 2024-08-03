@@ -30,9 +30,8 @@ pub enum ExecuteMsg {
 
     /// Closes an open trade for the specified pair index and trade index.
     /// Parameters:
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the trade to be closed.
-    CloseTradeMarket { pair_index: u64, index: u64 },
+    CloseTradeMarket { index: u64 },
 
     /// Updates the open limit order with new parameters.
     /// Parameters:
@@ -194,4 +193,112 @@ pub enum QueryMsg {
         pair_index: u64,
         index: u64,
     },
+}
+
+impl AdminExecuteMsg {
+    pub fn default_set_pairs() -> Self {
+        AdminExecuteMsg::SetPairs {
+            pairs: vec![
+                (
+                    0,
+                    Pair {
+                        from: "btc".to_string(),
+                        to: "usd".to_string(),
+                        spread_p: Decimal::zero(),
+                        oracle_index: 0,
+                        group_index: 0,
+                        fee_index: 0,
+                    },
+                ),
+                (
+                    1,
+                    Pair {
+                        from: "eth".to_string(),
+                        to: "usd".to_string(),
+                        spread_p: Decimal::zero(),
+                        oracle_index: 0,
+                        group_index: 0,
+                        fee_index: 0,
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+    pub fn default_set_groups() -> Self {
+        AdminExecuteMsg::SetGroups {
+            groups: vec![(
+                0,
+                Group {
+                    name: "default".to_string(),
+                    min_leverage: 1u128.into(),
+                    max_leverage: 100u128.into(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        }
+    }
+    pub fn default_set_fees() -> Self {
+        AdminExecuteMsg::SetFees {
+            fees: vec![(
+                0,
+                Fee {
+                    name: "default".to_string(),
+                    open_fee_p: Decimal::zero(),
+                    close_fee_p: Decimal::zero(),
+                    oracle_fee_p: Decimal::zero(),
+                    trigger_order_fee_p: Decimal::zero(),
+                    min_position_size_usd: Decimal::zero(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        }
+    }
+    pub fn default_set_fee_tiers() -> Self {
+        let fee_tiers: [FeeTier; 8] = [
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(975_u64, 1000_u64),
+                points_treshold: Uint128::new(6000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(950_u64, 1000_u64),
+                points_treshold: Uint128::new(20000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(925_u64, 1000_u64),
+                points_treshold: Uint128::new(50000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(900_u64, 1000_u64),
+                points_treshold: Uint128::new(100000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(850_u64, 1000_u64),
+                points_treshold: Uint128::new(250000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(800_u64, 1000_u64),
+                points_treshold: Uint128::new(400000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(700_u64, 1000_u64),
+                points_treshold: Uint128::new(1000000000),
+            },
+            FeeTier {
+                fee_multiplier: Decimal::from_ratio(600_u64, 1000_u64),
+                points_treshold: Uint128::new(2000000000),
+            },
+        ];
+        AdminExecuteMsg::UpdateFeeTiers {
+            fee_tiers: fee_tiers.clone(),
+        }
+    }
+    pub fn default_collaterals() -> Self {
+        AdminExecuteMsg::UpdateCollaterals {
+            collaterals: vec![(0, "usd".to_string())].into_iter().collect(),
+        }
+    }
 }

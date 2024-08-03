@@ -12,10 +12,11 @@ use crate::pairs::state::{
 };
 use crate::price_impact::{
     add_price_impact_open_interest, get_trade_price_impact,
+    remove_price_impact_open_interest,
 };
 use crate::trading::state::{
     LimitOrder, OpenOrderType, Trade, TradeInfo, TradeType, COLLATERALS,
-    TRADER_STORED, TRADES, TRADE_INFOS,
+    TRADER_STORED, TRADES, TRADE_INFOS, USER_COUNTERS,
 };
 use cosmwasm_std::{
     to_json_binary, Addr, BankMsg, Coin, Decimal, Deps, DepsMut, Env,
@@ -35,7 +36,7 @@ pub fn open_trade(
 
     let pair = PAIRS
         .load(deps.storage, trade.clone().pair_index)
-        .map_err(|_| ContractError::PairNotFound(trade.pair_index.clone()))?;
+        .map_err(|_| ContractError::PairNotFound(trade.pair_index))?;
 
     let base_price = get_token_price(&deps.as_ref(), &pair.oracle_index)?;
 
@@ -43,11 +44,11 @@ pub fn open_trade(
     let group = GROUPS.load(deps.storage, pair.group_index)?;
 
     let position_size_collateral = get_position_size_collateral(
-        trade.collateral_amount.clone(),
-        trade.leverage.clone(),
+        trade.collateral_amount,
+        trade.leverage,
     )?;
     let collateral_price =
-        get_token_price(&deps.as_ref(), &trade.collateral_index.clone())?;
+        get_collateral_price(&deps.as_ref(), &trade.collateral_index.clone())?;
 
     let position_size_usd =
         get_usd_normalized_value(collateral_price, position_size_collateral)?;
@@ -86,10 +87,10 @@ pub fn open_trade(
             deps.as_ref(),
             trade.clone(),
             position_size_usd,
-            base_price.clone(),
+            base_price,
             base_price,
             pair.spread_p,
-            max_slippage_p.clone(),
+            max_slippage_p,
         )?;
         let height = env.clone().block.height;
         let time = env.block.time;
@@ -99,7 +100,7 @@ pub fn open_trade(
             tp_last_updated_block: height,
             sl_last_updated_block: height,
             last_oi_update_ts: time,
-            max_slippage_p: max_slippage_p,
+            max_slippage_p,
             collateral_price_usd: collateral_price,
         };
 
@@ -306,7 +307,7 @@ fn distribute_trigger_fee_gov(
 
 fn distribute_trigger_reward(_trigger_fee_gov: Uint128) -> Vec<BankMsg> {
     // todo - do we want to reward oracles?
-    return Vec::new();
+    Vec::new()
 }
 
 fn pair_trigger_order_fee(
@@ -341,7 +342,23 @@ pub fn get_token_price(
     oracle_index: &u64,
 ) -> Result<Decimal, ContractError> {
     let query_msg = OracleQueryMsg::GetPrice {
-        oracle_index: *oracle_index,
+        index: *oracle_index,
+    };
+    let request: WasmQuery = WasmQuery::Smart {
+        contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
+        msg: to_json_binary(&query_msg)?,
+    };
+
+    let response: Decimal = deps.querier.query(&QueryRequest::Wasm(request))?;
+    Ok(response)
+}
+
+pub fn get_collateral_price(
+    deps: &Deps,
+    oracle_index: &u64,
+) -> Result<Decimal, ContractError> {
+    let query_msg = OracleQueryMsg::GetCollateralPrice {
+        index: *oracle_index,
     };
     let request: WasmQuery = WasmQuery::Smart {
         contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
@@ -366,8 +383,11 @@ fn store_trade(
     trade_info: Option<TradeInfo>,
     max_slippage_p: Option<Decimal>,
 ) -> Result<Vec<BankMsg>, ContractError> {
-    // todo update counters
     let mut trade = trade.clone();
+
+    let counter = USER_COUNTERS
+        .load(deps.storage, trade.user.clone())
+        .unwrap_or(0_u64);
 
     // Create or update trade_info
     let trade_info = match trade_info {
@@ -404,18 +424,20 @@ fn store_trade(
         trade.sl,
         trade.long,
     )?;
+    trade.index = counter;
 
     TRADES.save(
         deps.storage,
-        (trade.user.clone(), trade.pair_index.clone()),
+        (trade.user.clone(), trade.pair_index),
         &trade.clone(),
     )?;
     TRADE_INFOS.save(
         deps.storage,
-        (trade.user.clone(), trade.pair_index.clone()),
+        (trade.user.clone(), trade.pair_index),
         &trade_info,
     )?;
     TRADER_STORED.save(deps.storage, trade.user.clone(), &true)?;
+    USER_COUNTERS.save(deps.storage, trade.user.clone(), &(counter + 1))?;
 
     if trade.trade_type == TradeType::Trade {
         add_trade_oi_collateral(env, deps, trade, trade_info)?;
@@ -448,19 +470,51 @@ fn add_oi_collateral(
     handle_trade_borrowing(
         env,
         deps.storage,
-        trade.collateral_index.clone(),
-        trade.user.clone(),
-        trade.pair_index.clone(),
+        trade.collateral_index,
+        trade.pair_index,
         position_collateral,
         true,
-        trade.long.clone(),
+        trade.long,
     )?;
     add_price_impact_open_interest(
-        &deps,
+        deps,
         trade,
         trade_info,
         position_collateral,
     )?;
+    Ok(())
+}
+
+fn remove_trade_oi_collateral(
+    env: Env,
+    deps: &mut DepsMut,
+    trade: Trade,
+) -> Result<(), ContractError> {
+    remove_oi_collateral(
+        deps,
+        env,
+        trade.clone(),
+        get_position_size_collateral(trade.collateral_amount, trade.leverage)?,
+    )
+}
+
+fn remove_oi_collateral(
+    deps: &mut DepsMut,
+    env: Env,
+    trade: Trade,
+    position_collateral: Uint128,
+) -> Result<(), ContractError> {
+    handle_trade_borrowing(
+        env,
+        deps.storage,
+        trade.collateral_index,
+        trade.pair_index,
+        position_collateral,
+        false,
+        trade.long,
+    )?;
+    remove_price_impact_open_interest(deps, trade, position_collateral)?;
+
     Ok(())
 }
 
@@ -538,9 +592,9 @@ fn get_market_execution_price(
 ) -> Decimal {
     let price_diff = price.checked_mul(spread_p).unwrap();
     if long {
-        return price.checked_add(price_diff).unwrap();
+        price.checked_add(price_diff).unwrap()
     } else {
-        return price.checked_sub(price_diff).unwrap();
+        price.checked_sub(price_diff).unwrap()
     }
 }
 
@@ -574,18 +628,16 @@ fn get_usd_normalized_value(
     collateral_price: Decimal,
     collateral_value: Uint128,
 ) -> Result<Uint128, ContractError> {
-    Ok(Uint128::from(
-        collateral_price
+    Ok(collateral_price
             .checked_mul(Decimal::from_atomics(collateral_value.u128(), 0)?)?
-            .to_uint_floor(),
-    ))
+            .to_uint_floor())
 }
 
 fn get_collateral_price_usd(
     deps: &Deps,
     collateral_index: u64,
 ) -> Result<Decimal, ContractError> {
-    get_token_price(deps, &collateral_index)
+    get_collateral_price(deps, &collateral_index)
 }
 
 fn get_position_size_collateral(
@@ -609,12 +661,10 @@ fn limit_tp_distance(
             .checked_div(Decimal::from_atomics(leverage, 0)?)?;
         let new_tp = if long {
             open_price + tp_diff
+        } else if tp_diff <= open_price {
+            open_price - tp_diff
         } else {
-            if tp_diff <= open_price {
-                open_price - tp_diff
-            } else {
-                Decimal::zero()
-            }
+            Decimal::zero()
         };
         return Ok(new_tp);
     }
@@ -674,13 +724,25 @@ pub fn trigger_order(
 }
 
 pub fn close_trade_market(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _pair_index: u64,
-    _index: u64,
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    index: u64,
 ) -> Result<Response, ContractError> {
-    todo!()
+    let mut trade = TRADES.load(deps.storage, (info.sender.clone(), index))?;
+
+    if !trade.is_open {
+        return Err(ContractError::TradeClosed);
+    }
+
+    trade.is_open = false;
+    let counter = USER_COUNTERS.load(deps.storage, info.sender.clone())?;
+    USER_COUNTERS.save(deps.storage, info.sender, &(counter - 1))?;
+
+    if trade.trade_type == TradeType::Trade {
+        remove_trade_oi_collateral(env, deps, trade)?;
+    }
+    Ok(Response::new().add_attribute("action", "close_trade_market"))
 }
 
 pub fn update_open_limit_order(

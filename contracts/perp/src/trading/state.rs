@@ -6,12 +6,7 @@ pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
 pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
 pub const TRADE_INFOS: Map<(Addr, u64), TradeInfo> = Map::new("trade_infos");
 pub const TRADER_STORED: Map<Addr, bool> = Map::new("trader_stored");
-
-// todo! Why are these not used?
-// pub const PENDING_ORDERS: Map<(Addr, u64), PendingOrder> =
-// Map::new("pending_orders");
-// pub const TRADE_PENDING_ORDERS_BLOCK: Map<(Addr, u64, PendingOrder), u64> =
-//     Map::new("pending_orders");
+pub const USER_COUNTERS: Map<Addr, u64> = Map::new("user_counters");
 
 #[cw_serde]
 pub struct Trader {
@@ -24,6 +19,7 @@ pub struct Trader {
 pub struct Trade {
     pub user: Addr,
     pub pair_index: u64,
+    pub index: u64,
 
     pub leverage: Uint128,
     pub long: bool,

@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{from_json, Addr, Coin, Decimal, Empty, StdError};
 use cw_multi_test::{
     error::AnyResult, BankSudo, Contract, ContractWrapper, Executor,
 };
-use perp::pairs::state::PAIRS;
+use perp::{
+    msgs::AdminExecuteMsg,
+};
 use test_app::Simapp;
 
 struct Contracts {
@@ -138,53 +138,60 @@ impl App {
             .unwrap();
     }
 
-    pub fn create_default_pairs(&mut self) {
-        let mut pairs: HashMap<u64, perp::pairs::state::Pair> = HashMap::new();
-
-        pairs.insert(
-            0,
-            perp::pairs::state::Pair {
-                from: "btc".to_string(),
-                to: "usd".to_string(),
-                spread_p: Decimal::zero(),
-                oracle_index: 0,
-                group_index: 0,
-                fee_index: 0,
-            },
-        );
-
-        pairs.insert(
-            1,
-            perp::pairs::state::Pair {
-                from: "eth".to_string(),
-                to: "usd".to_string(),
-                spread_p: Decimal::zero(),
-                oracle_index: 0,
-                group_index: 0,
-                fee_index: 0,
-            },
-        );
-
-        let message = perp::msgs::AdminExecuteMsg::SetPairs {
-            pairs: pairs.clone(),
+    pub fn set_up_oracle_asset(&mut self, index: u64, price: Decimal) {
+        let oracle_post_price = oracle::contract::OraclesExecuteMsg::SetPrice {
+            index,
+            price,
         };
+
         self.simapp
             .execute_contract(
-                self.perp_owner.clone(),
-                self.perp_addr.clone(),
-                &perp::msgs::ExecuteMsg::AdminMsg { msg: message },
-                &vec![],
+                self.oracle_owner.clone(),
+                self.oracle_addr.clone(),
+                &oracle_post_price,
+                &[],
             )
             .unwrap();
+    }
 
-        // assert pairs are created
-        let storage = &*self.simapp.contract_storage(&self.perp_addr);
-        let pair_1 = PAIRS.load(storage, 0).unwrap();
-        let pair_2 = PAIRS.load(storage, 1).unwrap();
+    pub fn set_up_oracle_collateral(&mut self, index: u64, price: Decimal) {
+        let oracle_post_price =
+            oracle::contract::OraclesExecuteMsg::SetCollateralPrice {
+                index,
+                price,
+            };
 
-        assert_eq!(&pair_1, pairs.get(&0).unwrap());
-        assert_eq!(&pair_2, pairs.get(&1).unwrap());
+        self.simapp
+            .execute_contract(
+                self.oracle_owner.clone(),
+                self.oracle_addr.clone(),
+                &oracle_post_price,
+                &[],
+            )
+            .unwrap();
+    }
 
-        // asset pair are listed
+    pub fn create_default_pairs(&mut self) {
+        let mut messages: Vec<AdminExecuteMsg> = vec![];
+
+        // pairs
+        messages.push(AdminExecuteMsg::default_set_pairs());
+        messages.push(AdminExecuteMsg::default_set_groups());
+        // fees
+        messages.push(AdminExecuteMsg::default_set_fees());
+        messages.push(AdminExecuteMsg::default_set_fee_tiers());
+        // trading
+        messages.push(AdminExecuteMsg::default_collaterals());
+
+        for msg in messages {
+            self.simapp
+                .execute_contract(
+                    self.perp_owner.clone(),
+                    self.perp_addr.clone(),
+                    &perp::msgs::ExecuteMsg::AdminMsg { msg },
+                    &[],
+                )
+                .unwrap();
+        }
     }
 }

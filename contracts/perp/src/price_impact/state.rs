@@ -1,7 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
-use std::collections::HashMap;
 
 pub const OI_WINDOWS_SETTINGS: Item<OiWindowsSettings> =
     Item::new("oi_windows_settings");

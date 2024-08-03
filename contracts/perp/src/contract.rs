@@ -60,12 +60,12 @@ pub fn execute(
         ExecuteMsg::OpenTrade {
             trade,
             order_type,
-            spread_reduction_id,
+            spread_reduction_id: _,
             slippage_p,
-            referral,
+            referral: _,
         } => open_trade(&mut deps, env, info, trade, order_type, slippage_p),
-        ExecuteMsg::CloseTradeMarket { pair_index, index } => {
-            close_trade_market(deps, env, info, pair_index, index)
+        ExecuteMsg::CloseTradeMarket { index } => {
+            close_trade_market(&mut deps, env, info, index)
         }
         ExecuteMsg::UpdateOpenLimitOrder {
             pair_index,

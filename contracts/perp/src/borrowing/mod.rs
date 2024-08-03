@@ -1,6 +1,6 @@
-use cosmwasm_std::{Addr, Decimal, Env, Storage, Uint128};
+use cosmwasm_std::{Decimal, Env, Storage, Uint128};
 use state::{
-    BorrowingData, BorrowingInitialAccFees, OpenInterest,
+    BorrowingData, OpenInterest,
     PendingBorrowingAccFeesInput, GROUPS, GROUP_OIS, PAIRS, PAIR_GROUPS,
     PAIR_OIS,
 };
@@ -13,7 +13,6 @@ pub fn handle_trade_borrowing(
     env: Env,
     storage: &mut dyn Storage,
     collateral_index: u64,
-    _user: Addr,
     pair_index: u64,
     position_collateral: Uint128,
     open: bool,
@@ -74,8 +73,8 @@ fn reset_trade_borrowing_fees(
     pair_index: u64,
     group_index: u64,
     long: bool,
-    open: bool,
-    position_collateral: Uint128,
+    _open: bool,
+    _position_collateral: Uint128,
     current_block: u64,
 ) -> Result<(), ContractError> {
     let pair_borrowing_data = get_borrowing_pair_pending_acc_fees(
@@ -92,19 +91,15 @@ fn reset_trade_borrowing_fees(
         current_block,
     )?;
 
-    BorrowingInitialAccFees {
-        acc_pair_fee: if long {
+    if long {
             pair_borrowing_data.acc_fee_long
         } else {
             pair_borrowing_data.acc_fee_short
-        },
-        acc_group_fee: if long {
+        };if long {
             group_borrowing_data.acc_fee_long
         } else {
             group_borrowing_data.acc_fee_short
-        },
-        block: current_block,
-    };
+        };current_block;
 
     Ok(())
 }
@@ -152,26 +147,20 @@ fn update_oi(
     if long {
         if increase {
             oi.long += delta;
+        } else if delta > oi.long {
+            oi.long = Uint128::zero();
         } else {
-            if delta > oi.long {
-                oi.long = Uint128::zero();
-            } else {
-                oi.long -= delta;
-            }
+            oi.long -= delta;
         }
+    } else if increase {
+        oi.short += delta;
+    } else if delta > oi.short {
+        oi.short = Uint128::zero();
     } else {
-        if increase {
-            oi.short += delta;
-        } else {
-            if delta > oi.short {
-                oi.short = Uint128::zero();
-            } else {
-                oi.short -= delta;
-            }
-        }
+        oi.short -= delta;
     }
 
-    return (oi.long, oi.short, delta);
+    (oi.long, oi.short, delta)
 }
 
 fn set_pair_pending_acc_fees(
@@ -227,7 +216,7 @@ fn get_borrowing_group_pending_acc_fees(
         fee_exponent: group.fee_exponent,
     };
 
-    let (acc_fee_long, acc_fee_short, pair_acc_fee_delta) =
+    let (acc_fee_long, acc_fee_short, _pair_acc_fee_delta) =
         get_borrowing_pending_acc_fees(input)?;
 
     group.acc_fee_long = acc_fee_long;
@@ -264,7 +253,7 @@ fn get_borrowing_pair_pending_acc_fees(
         fee_exponent: pair.fee_exponent,
     };
 
-    let (acc_fee_long, acc_fee_short, pair_acc_fee_delta): (u64, u64, u64) =
+    let (acc_fee_long, acc_fee_short, _pair_acc_fee_delta): (u64, u64, u64) =
         get_borrowing_pending_acc_fees(input)?;
 
     pair.acc_fee_long = acc_fee_long;
@@ -278,7 +267,7 @@ fn get_pair_ois_collateral(
     storage: &dyn Storage,
     collateral_index: u64,
     pair_index: u64,
-    block_number: u64,
+    _block_number: u64,
 ) -> Result<(Uint128, Uint128), ContractError> {
     let pair_oi = PAIR_OIS.load(storage, (collateral_index, pair_index))?;
 
@@ -342,7 +331,6 @@ fn get_borrowing_pair_group_index(
     pair_index: u64,
 ) -> u64 {
     PAIR_GROUPS
-        .load(storage, (collateral_index, pair_index))
-        .and_then(|x| Ok(x[x.len() - 1].group_index))
-        .unwrap_or_else(|_| 0_u64)
+        .load(storage, (collateral_index, pair_index)).map(|x| x[x.len() - 1].group_index)
+        .unwrap_or(0_u64)
 }

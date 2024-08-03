@@ -6,8 +6,10 @@ use state::{OiWindowsSettings, OI_WINDOWS_SETTINGS, PAIR_DEPTHS, WINDOWS};
 use crate::{
     error::ContractError,
     trade::get_token_price,
-    trading::state::{Trade, TradeInfo},
+    trading::state::{Trade, TradeInfo, TRADE_INFOS},
 };
+
+const MAX_WINDOW_COUNT: u64 = 5;
 
 fn get_window_id(timestamp: Timestamp, settings: &OiWindowsSettings) -> u64 {
     (timestamp.seconds() - settings.start_ts) / settings.windows_duration
@@ -109,17 +111,17 @@ pub fn get_trade_price_impact(
         Uint128::zero()
     };
 
-    return _get_trade_price_impact(
+    _get_trade_price_impact(
         open_price,
         long,
         start_open_interest_usd,
         trade_open_interest_usd,
         Uint128::new(depth),
-    );
+    )
 }
 
 pub fn add_price_impact_open_interest(
-    deps: &DepsMut,
+    deps: &mut DepsMut,
     trade: Trade,
     trade_info: TradeInfo,
     position_collateral: Uint128,
@@ -150,10 +152,10 @@ pub fn add_price_impact_open_interest(
         let last_window_oi_usd =
             get_trade_last_window_oi_usd(&trade.user, &trade.pair_index);
         remove_price_impact_open_interest(
-            &trade.user,
-            &trade.pair_index,
-            last_window_oi_usd,
-        );
+            deps,
+            trade.clone(),
+            Uint128::from(last_window_oi_usd),
+        )?;
 
         oi_delta_usd += current_collateral_price
             .checked_mul(Decimal::from_atomics(last_window_oi_usd, 0)?)?
@@ -182,15 +184,105 @@ pub fn add_price_impact_open_interest(
     trade_info.last_oi_update_ts = current_timestamp();
     trade_info.collateral_price_usd = current_collateral_price;
 
+    TRADE_INFOS.save(
+        deps.storage,
+        (trade.user.clone(), trade.index),
+        &trade_info,
+    )?;
+
+    WINDOWS.save(
+        deps.storage,
+        (
+            trade.pair_index,
+            current_window_id,
+            oi_window_settings.windows_count,
+        ),
+        &current_window,
+    )?;
+
     Ok(())
 }
 
-fn remove_price_impact_open_interest(
-    _trader: &Addr,
-    _index: &u64,
-    _last_window_oi_usd: u64,
-) -> u64 {
-    todo!()
+pub fn remove_price_impact_open_interest(
+    deps: &mut DepsMut,
+    trade: Trade,
+    oi_delta_collateral: Uint128,
+) -> Result<(), ContractError> {
+    let trade_info = TRADE_INFOS
+        .load(deps.storage, (trade.user.clone(), trade.index))?;
+
+    let oi_window_settings = OI_WINDOWS_SETTINGS.load(deps.storage)?;
+
+    if oi_delta_collateral.is_zero()
+        || trade_info.last_oi_update_ts == Timestamp::from_nanos(0)
+    {
+        return Ok(());
+    }
+
+    let current_window_id = get_current_window_id(&oi_window_settings);
+    let add_window_id =
+        get_window_id(trade_info.last_oi_update_ts, &oi_window_settings);
+    let not_outdated =
+        is_window_potentially_active(add_window_id, current_window_id);
+
+    let mut oi_delta_usd = convert_collateral_to_usd(
+        &trade.collateral_index,
+        &trade.pair_index,
+        oi_delta_collateral,
+        get_token_price(&deps.as_ref(), &trade.collateral_index)?,
+    )?;
+
+    if not_outdated {
+        let mut window = WINDOWS.load(
+            deps.storage,
+            (
+                trade.pair_index,
+                current_window_id,
+                oi_window_settings.windows_count,
+            ),
+        )?;
+
+        let last_window_oi_usd =
+            get_trade_last_window_oi_usd(&trade.user, &trade.pair_index);
+
+        oi_delta_usd = if oi_delta_usd > Uint128::from(last_window_oi_usd) {
+            Uint128::from(last_window_oi_usd)
+        } else {
+            oi_delta_usd
+        };
+
+        if trade.long {
+            window.oi_long_usd = if oi_delta_usd < window.oi_long_usd {
+                window.oi_long_usd - oi_delta_usd
+            } else {
+                Uint128::zero()
+            };
+        } else {
+            window.oi_short_usd = if oi_delta_usd < window.oi_short_usd {
+                window.oi_short_usd - oi_delta_usd
+            } else {
+                Uint128::zero()
+            };
+        }
+        WINDOWS.save(
+            deps.storage,
+            (
+                trade.pair_index,
+                current_window_id,
+                oi_window_settings.windows_count,
+            ),
+            &window,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn is_window_potentially_active(
+    add_window_id: u64,
+    current_window_id: u64,
+) -> bool {
+    current_window_id - add_window_id < MAX_WINDOW_COUNT
 }
 
 fn get_trade_last_window_oi_usd(_trader: &Addr, _index: &u64) -> u64 {

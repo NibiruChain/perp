@@ -32,6 +32,12 @@ pub struct TraderDailyInfo {
     pub points: Uint128,
 }
 
+impl Default for TraderDailyInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TraderDailyInfo {
     pub fn new() -> Self {
         Self {

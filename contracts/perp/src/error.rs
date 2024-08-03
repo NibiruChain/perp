@@ -93,6 +93,9 @@ pub enum ContractError {
 
     #[error("invalid max slippage")]
     InvalidMaxSlippage,
+
+    #[error("trade closed")]
+    TradeClosed,
 }
 
 impl From<serde_json::Error> for ContractError {

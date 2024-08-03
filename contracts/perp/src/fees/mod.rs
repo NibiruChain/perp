@@ -27,5 +27,5 @@ pub fn calculate_fee_amount(
 }
 
 fn get_current_day(time: Timestamp) -> u64 {
-    return time.seconds() / 86400;
+    time.seconds() / 86400
 }

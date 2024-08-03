@@ -39,7 +39,6 @@ impl Pair {
 #[cw_serde]
 pub struct Group {
     pub name: String,
-    pub job: [u8; 32],
     pub min_leverage: Uint128,
     pub max_leverage: Uint128,
 }
@@ -59,8 +58,8 @@ impl Fee {
         let one = Decimal::one();
         let two = one + one;
 
-        return Ok((self.min_position_size_usd
+        Ok((self.min_position_size_usd
             * (self.open_fee_p.checked_mul(two)? + self.trigger_order_fee_p))
-            .to_uint_floor());
+            .to_uint_floor())
     }
 }

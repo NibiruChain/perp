@@ -1,7 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Uint128};
-use cw_storage_plus::{Item, Map};
-use std::collections::HashMap;
+use cw_storage_plus::Map;
 
 pub const PAIRS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
 pub const PAIR_GROUPS: Map<(u64, u64), Vec<BorrowingPairGroup>> =
