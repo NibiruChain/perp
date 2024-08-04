@@ -10,8 +10,8 @@ use crate::{
         STAKING_ADDRESS,
     },
     trade::{
-        cancel_open_limit_order, close_trade_market, execute_limit_order,
-        open_trade, update_open_limit_order, update_sl, update_tp,
+        cancel_open_order, close_trade, execute_limit_order, open_trade,
+        update_open_order, update_sl, update_tp,
     },
 };
 
@@ -60,35 +60,34 @@ pub fn execute(
         ExecuteMsg::OpenTrade {
             trade,
             order_type,
-            spread_reduction_id: _,
             slippage_p,
             referral: _,
         } => open_trade(&mut deps, env, info, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { index } => {
-            close_trade_market(&mut deps, env, info, index)
+            close_trade(&mut deps, env, info, index)
         }
         ExecuteMsg::UpdateOpenLimitOrder {
-            pair_index,
             index,
             price,
             tp,
             sl,
-        } => update_open_limit_order(
-            deps, env, info, pair_index, index, price, tp, sl,
+            slippage_p,
+        } => update_open_order(
+            &mut deps, env, info, index, price, tp, sl, slippage_p,
         ),
-        ExecuteMsg::CancelOpenLimitOrder { pair_index, index } => {
-            cancel_open_limit_order(deps, env, info, pair_index, index)
+        ExecuteMsg::CancelOpenLimitOrder { index } => {
+            cancel_open_order(&mut deps, env, info, index)
         }
         ExecuteMsg::UpdateTp {
             pair_index,
             index,
             new_tp,
-        } => update_tp(deps, env, info, pair_index, index, new_tp),
+        } => update_tp(&mut deps, env, info, pair_index, index, new_tp),
         ExecuteMsg::UpdateSl {
             pair_index,
             index,
             new_sl,
-        } => update_sl(deps, env, info, pair_index, index, new_sl),
+        } => update_sl(&mut deps, env, info, pair_index, index, new_sl),
         ExecuteMsg::ExecuteNftOrder {
             order_type,
             trader,
@@ -97,7 +96,7 @@ pub fn execute(
             nft_id,
             nft_type,
         } => execute_limit_order(
-            deps, env, info, order_type, trader, pair_index, index, nft_id,
+            &mut deps, env, info, order_type, trader, pair_index, index, nft_id,
             nft_type,
         ),
         ExecuteMsg::AdminMsg { msg } => {

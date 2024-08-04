@@ -96,6 +96,9 @@ pub enum ContractError {
 
     #[error("trade closed")]
     TradeClosed,
+
+    #[error("invalid trade type")]
+    InvalidTradeType,
 }
 
 impl From<serde_json::Error> for ContractError {

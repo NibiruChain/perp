@@ -23,7 +23,6 @@ pub enum ExecuteMsg {
     OpenTrade {
         trade: Trade,
         order_type: OpenOrderType,
-        spread_reduction_id: u64,
         slippage_p: Decimal,
         referral: String,
     },
@@ -41,18 +40,18 @@ pub enum ExecuteMsg {
     /// - tp: New take profit value.
     /// - sl: New stop loss value.
     UpdateOpenLimitOrder {
-        pair_index: u64,
         index: u64,
         price: Decimal,
         tp: Decimal,
         sl: Decimal,
+        slippage_p: Decimal,
     },
 
     /// Cancels the open limit order.
     /// Parameters:
     /// - pair_index: The index of the trading pair.
     /// - index: The index of the limit order to cancel.
-    CancelOpenLimitOrder { pair_index: u64, index: u64 },
+    CancelOpenLimitOrder { index: u64 },
 
     /// Updates the take profit value for an open trade.
     /// Parameters:

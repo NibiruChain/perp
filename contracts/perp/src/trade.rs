@@ -43,10 +43,8 @@ pub fn open_trade(
     let pair_fees = FEES.load(deps.storage, pair.fee_index)?;
     let group = GROUPS.load(deps.storage, pair.group_index)?;
 
-    let position_size_collateral = get_position_size_collateral(
-        trade.collateral_amount,
-        trade.leverage,
-    )?;
+    let position_size_collateral =
+        get_position_size_collateral(trade.collateral_amount, trade.leverage)?;
     let collateral_price =
         get_collateral_price(&deps.as_ref(), &trade.collateral_index.clone())?;
 
@@ -629,8 +627,8 @@ fn get_usd_normalized_value(
     collateral_value: Uint128,
 ) -> Result<Uint128, ContractError> {
     Ok(collateral_price
-            .checked_mul(Decimal::from_atomics(collateral_value.u128(), 0)?)?
-            .to_uint_floor())
+        .checked_mul(Decimal::from_atomics(collateral_value.u128(), 0)?)?
+        .to_uint_floor())
 }
 
 fn get_collateral_price_usd(
@@ -723,7 +721,7 @@ pub fn trigger_order(
     todo!()
 }
 
-pub fn close_trade_market(
+pub fn close_trade(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
@@ -737,39 +735,104 @@ pub fn close_trade_market(
 
     trade.is_open = false;
     let counter = USER_COUNTERS.load(deps.storage, info.sender.clone())?;
-    USER_COUNTERS.save(deps.storage, info.sender, &(counter - 1))?;
+    USER_COUNTERS.save(deps.storage, info.sender.clone(), &(counter - 1))?;
+    TRADES.save(deps.storage, (info.sender.clone(), index), &trade)?;
 
     if trade.trade_type == TradeType::Trade {
         remove_trade_oi_collateral(env, deps, trade)?;
+        Ok(Response::new().add_attribute("action", "close_trade"))
+    } else {
+        Ok(Response::new()
+            .add_attribute("action", "cance_open_order")
+            .add_message(BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: vec![Coin::new(
+                    trade.collateral_amount,
+                    COLLATERALS.load(deps.storage, trade.collateral_index)?,
+                )],
+            }))
     }
-    Ok(Response::new().add_attribute("action", "close_trade_market"))
 }
 
-pub fn update_open_limit_order(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _pair_index: u64,
-    _index: u64,
-    _price: Decimal,
-    _tp: Decimal,
-    _sl: Decimal,
+pub fn update_open_order(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    index: u64,
+    price: Decimal,
+    tp: Decimal,
+    sl: Decimal,
+    slippage_p: Decimal,
 ) -> Result<Response, ContractError> {
-    todo!()
+    let trade = TRADES.load(deps.storage, (info.sender.clone(), index))?;
+    update_open_order_details(deps, env, trade, price, tp, sl, slippage_p)?;
+    Ok(Response::new().add_attribute("action", "update_open_order"))
 }
 
-pub fn cancel_open_limit_order(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _pair_index: u64,
-    _index: u64,
+fn update_open_order_details(
+    deps: &mut DepsMut,
+    env: Env,
+    trade: Trade,
+    price: Decimal,
+    tp: Decimal,
+    sl: Decimal,
+    slippage_p: Decimal,
+) -> Result<(), ContractError> {
+    let mut trade = trade.clone();
+    let mut trade_info =
+        TRADE_INFOS.load(deps.storage, (trade.user.clone(), trade.index))?;
+
+    if !trade.is_open {
+        return Err(ContractError::TradeClosed);
+    }
+    if trade.trade_type == TradeType::Trade {
+        return Err(ContractError::InvalidTradeType);
+    }
+    if price.is_zero() {
+        return Err(ContractError::TradeInvalid);
+    }
+    if !tp.is_zero() && (trade.long && price >= tp || !trade.long && price <= tp)
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+    if !sl.is_zero() && (trade.long && price <= sl || !trade.long && price >= sl)
+    {
+        return Err(ContractError::InvalidTpSl);
+    }
+    if slippage_p.is_zero() {
+        return Err(ContractError::InvalidMaxSlippage);
+    }
+
+    trade.tp = limit_tp_distance(price, trade.leverage, tp, trade.long)?;
+    trade.sl = limit_sl_distance(price, trade.leverage, sl, trade.long)?;
+
+    trade.open_price = price;
+
+    trade_info.max_slippage_p = slippage_p;
+    trade_info.created_block = env.block.height;
+    trade_info.tp_last_updated_block = env.block.height;
+    trade_info.sl_last_updated_block = env.block.height;
+
+    TRADES.save(deps.storage, (trade.user.clone(), trade.pair_index), &trade)?;
+    TRADE_INFOS.save(
+        deps.storage,
+        (trade.user.clone(), trade.pair_index),
+        &trade_info,
+    )?;
+    Ok(())
+}
+
+pub fn cancel_open_order(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    index: u64,
 ) -> Result<Response, ContractError> {
-    todo!()
+    close_trade(deps, env, info, index)
 }
 
 pub fn update_tp(
-    _deps: DepsMut,
+    deps: &mut DepsMut,
     _env: Env,
     _info: MessageInfo,
     _pair_index: u64,
@@ -780,7 +843,7 @@ pub fn update_tp(
 }
 
 pub fn update_sl(
-    _deps: DepsMut,
+    deps: &mut DepsMut,
     _env: Env,
     _info: MessageInfo,
     _pair_index: u64,
@@ -791,7 +854,7 @@ pub fn update_sl(
 }
 
 pub fn execute_limit_order(
-    _deps: DepsMut,
+    deps: &mut DepsMut,
     _env: Env,
     _info: MessageInfo,
     _order_type: LimitOrder,
