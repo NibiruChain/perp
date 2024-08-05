@@ -8,6 +8,6 @@ cosmwasm-std = { workspace = true }
 cosmwasm-schema = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
-cw-utils = { version = "1.0.3" }
+cw-utils = { version = "2.0.0" }
 prost = "0.12.3"
 cw-multi-test = { workspace = true }
