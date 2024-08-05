@@ -8,7 +8,9 @@ use crate::{
     fees::state::{FeeTier, TraderDailyInfo},
     pairs::state::{Fee, Group, Pair},
     price_impact::state::{OiWindowsSettings, PairDepth, PairOi},
-    trading::state::{LimitOrder, OpenOrderType, Trade, TradeInfo},
+    trading::state::{
+        OpenOrderType, PendingOrderType, Trade, TradeInfo, TradingActivated,
+    },
 };
 
 #[cw_serde]
@@ -34,11 +36,11 @@ pub enum ExecuteMsg {
 
     /// Updates the open limit order with new parameters.
     /// Parameters:
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the limit order to update.
     /// - price: New price for the limit order.
     /// - tp: New take profit value.
     /// - sl: New stop loss value.
+    /// - slippage_p: New slippage percentage.
     UpdateOpenLimitOrder {
         index: u64,
         price: Decimal,
@@ -49,47 +51,30 @@ pub enum ExecuteMsg {
 
     /// Cancels the open limit order.
     /// Parameters:
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the limit order to cancel.
     CancelOpenLimitOrder { index: u64 },
 
     /// Updates the take profit value for an open trade.
     /// Parameters:
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the trade to update.
     /// - new_tp: The new take profit value.
-    UpdateTp {
-        pair_index: u64,
-        index: u64,
-        new_tp: Decimal,
-    },
+    UpdateTp { index: u64, new_tp: Decimal },
 
     /// Updates the stop loss value for an open trade.
     /// Parameters:
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the trade to update.
     /// - new_sl: The new stop loss value.
-    UpdateSl {
-        pair_index: u64,
-        index: u64,
-        new_sl: Decimal,
-    },
+    UpdateSl { index: u64, new_sl: Decimal },
 
-    /// Executes an NFT order for the specified parameters.
+    /// Trigger a limit order.
     /// Parameters:
-    /// - order_type: Type of limit order (TP, SL, LIQ, OPEN).
     /// - trader: Address of the trader.
-    /// - pair_index: The index of the trading pair.
     /// - index: The index of the trade or order.
-    /// - nft_id: ID of the NFT used.
-    /// - nft_type: Type of NFT (1-5).
-    ExecuteNftOrder {
-        order_type: LimitOrder,
-        trader: String,
-        pair_index: u64,
+    /// - order_type: The type of pending order.
+    TriggerLimitOrder {
+        trader: Addr,
         index: u64,
-        nft_id: u64,
-        nft_type: u8,
+        order_type: PendingOrderType,
     },
 
     /// Admin executes the specified message.
@@ -172,6 +157,9 @@ pub enum AdminExecuteMsg {
     UpdateTraderStored {
         trader_stored: HashMap<Addr, bool>,
     },
+    UpdateTradingActivated {
+        trading_activated: TradingActivated,
+    },
 }
 
 #[cw_serde]
@@ -249,7 +237,7 @@ impl AdminExecuteMsg {
                     close_fee_p: Decimal::zero(),
                     oracle_fee_p: Decimal::zero(),
                     trigger_order_fee_p: Decimal::zero(),
-                    min_position_size_usd: Decimal::zero(),
+                    min_position_size_usd: Uint128::zero(),
                 },
             )]
             .into_iter()
@@ -298,6 +286,11 @@ impl AdminExecuteMsg {
     pub fn default_collaterals() -> Self {
         AdminExecuteMsg::UpdateCollaterals {
             collaterals: vec![(0, "usd".to_string())].into_iter().collect(),
+        }
+    }
+    pub fn set_trading_activated(activated: TradingActivated) -> Self {
+        AdminExecuteMsg::UpdateTradingActivated {
+            trading_activated: activated,
         }
     }
 }

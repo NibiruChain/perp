@@ -3,9 +3,7 @@ use cosmwasm_std::{from_json, Addr, Coin, Decimal, Empty, StdError};
 use cw_multi_test::{
     error::AnyResult, BankSudo, Contract, ContractWrapper, Executor,
 };
-use perp::{
-    msgs::AdminExecuteMsg,
-};
+use perp::{msgs::AdminExecuteMsg, trading::state::TradingActivated};
 use test_app::Simapp;
 
 struct Contracts {
@@ -139,10 +137,8 @@ impl App {
     }
 
     pub fn set_up_oracle_asset(&mut self, index: u64, price: Decimal) {
-        let oracle_post_price = oracle::contract::OraclesExecuteMsg::SetPrice {
-            index,
-            price,
-        };
+        let oracle_post_price =
+            oracle::contract::OraclesExecuteMsg::SetPrice { index, price };
 
         self.simapp
             .execute_contract(
@@ -182,6 +178,11 @@ impl App {
         messages.push(AdminExecuteMsg::default_set_fee_tiers());
         // trading
         messages.push(AdminExecuteMsg::default_collaterals());
+
+        // turn on trading
+        messages.push(AdminExecuteMsg::set_trading_activated(
+            TradingActivated::Activated,
+        ));
 
         for msg in messages {
             self.simapp

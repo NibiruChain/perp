@@ -10,7 +10,7 @@ use crate::{
         STAKING_ADDRESS,
     },
     trade::{
-        cancel_open_order, close_trade, execute_limit_order, open_trade,
+        cancel_open_order, close_trade, open_trade, trigger_limit_order,
         update_open_order, update_sl, update_tp,
     },
 };
@@ -78,27 +78,19 @@ pub fn execute(
         ExecuteMsg::CancelOpenLimitOrder { index } => {
             cancel_open_order(&mut deps, env, info, index)
         }
-        ExecuteMsg::UpdateTp {
-            pair_index,
-            index,
-            new_tp,
-        } => update_tp(&mut deps, env, info, pair_index, index, new_tp),
-        ExecuteMsg::UpdateSl {
-            pair_index,
-            index,
-            new_sl,
-        } => update_sl(&mut deps, env, info, pair_index, index, new_sl),
-        ExecuteMsg::ExecuteNftOrder {
-            order_type,
+        ExecuteMsg::UpdateTp { index, new_tp } => {
+            update_tp(&mut deps, env, info, index, new_tp)
+        }
+        ExecuteMsg::UpdateSl { index, new_sl } => {
+            update_sl(&mut deps, env, info, index, new_sl)
+        }
+        ExecuteMsg::TriggerLimitOrder {
             trader,
-            pair_index,
             index,
-            nft_id,
-            nft_type,
-        } => execute_limit_order(
-            &mut deps, env, info, order_type, trader, pair_index, index, nft_id,
-            nft_type,
-        ),
+            order_type,
+        } => {
+            trigger_limit_order(&mut deps, env, trader, info, index, order_type)
+        }
         ExecuteMsg::AdminMsg { msg } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             execute_admin(&mut deps, env, msg)
@@ -276,6 +268,11 @@ pub(crate) fn execute_admin(
                     stored,
                 )?;
             }
+            Ok(Response::new())
+        }
+        AdminExecuteMsg::UpdateTradingActivated { trading_activated } => {
+            crate::trading::state::TRADING_ACTIVATED
+                .save(deps.storage, &trading_activated)?;
             Ok(Response::new())
         }
     }

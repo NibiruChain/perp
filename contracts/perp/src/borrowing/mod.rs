@@ -1,11 +1,14 @@
-use cosmwasm_std::{Decimal, Env, Storage, Uint128};
+use cosmwasm_std::{Decimal, Deps, Env, Storage, Uint128};
 use state::{
-    BorrowingData, OpenInterest,
-    PendingBorrowingAccFeesInput, GROUPS, GROUP_OIS, PAIRS, PAIR_GROUPS,
-    PAIR_OIS,
+    BorrowingData, OpenInterest, PendingBorrowingAccFeesInput, GROUPS,
+    GROUP_OIS, PAIRS, PAIR_GROUPS, PAIR_OIS,
 };
 
-use crate::error::ContractError;
+use crate::{
+    constants::LIQ_THRESHOLD_P, error::ContractError,
+    fees::calculate_fee_amount, pairs::state::FEES, trade::get_collateral_price,
+    trading::state::Trade,
+};
 
 pub mod state;
 
@@ -92,14 +95,16 @@ fn reset_trade_borrowing_fees(
     )?;
 
     if long {
-            pair_borrowing_data.acc_fee_long
-        } else {
-            pair_borrowing_data.acc_fee_short
-        };if long {
-            group_borrowing_data.acc_fee_long
-        } else {
-            group_borrowing_data.acc_fee_short
-        };current_block;
+        pair_borrowing_data.acc_fee_long
+    } else {
+        pair_borrowing_data.acc_fee_short
+    };
+    if long {
+        group_borrowing_data.acc_fee_long
+    } else {
+        group_borrowing_data.acc_fee_short
+    };
+    current_block;
 
     Ok(())
 }
@@ -331,6 +336,100 @@ fn get_borrowing_pair_group_index(
     pair_index: u64,
 ) -> u64 {
     PAIR_GROUPS
-        .load(storage, (collateral_index, pair_index)).map(|x| x[x.len() - 1].group_index)
+        .load(storage, (collateral_index, pair_index))
+        .map(|x| x[x.len() - 1].group_index)
         .unwrap_or(0_u64)
+}
+
+pub fn get_trade_liquidation_price_with_fees(
+    deps: &Deps,
+    env: Env,
+    trade: Trade,
+    use_borrowing_fees: bool,
+) -> Result<Decimal, ContractError> {
+    let pair =
+        crate::pairs::state::PAIRS.load(deps.storage, trade.pair_index)?;
+    let fee = FEES.load(deps.storage, pair.fee_index)?;
+
+    let closing_fees_collateral = Decimal::from_ratio(
+        get_position_size_collateral_basis(
+            deps,
+            trade.collateral_index,
+            trade.collateral_amount,
+            fee.min_position_size_usd,
+        )?,
+        0_u64,
+    )
+    .checked_mul(fee.close_fee_p.checked_add(fee.trigger_order_fee_p)?)?
+    .to_uint_floor();
+
+    let borrowing_fees_collateral = if use_borrowing_fees {
+        calculate_fee_amount(deps, env, &trade.user, closing_fees_collateral)?
+    } else {
+        Uint128::zero()
+    };
+
+    get_trade_liquidation_price(
+        trade.open_price,
+        trade.long,
+        trade.collateral_amount,
+        trade.leverage,
+        closing_fees_collateral.checked_add(borrowing_fees_collateral)?,
+    )
+}
+
+fn get_position_size_collateral_basis(
+    deps: &Deps,
+    collateral_index: u64,
+    position_size_collateral: Uint128,
+    min_position_size_usd: Uint128,
+) -> Result<Uint128, ContractError> {
+    let min_position_size_collateral = get_min_position_size_collateral(
+        deps,
+        collateral_index,
+        min_position_size_usd,
+    )?;
+
+    if position_size_collateral > min_position_size_collateral {
+        Ok(position_size_collateral)
+    } else {
+        Ok(min_position_size_collateral)
+    }
+}
+
+fn get_min_position_size_collateral(
+    deps: &Deps,
+    collateral_index: u64,
+    min_position_size_usd: Uint128,
+) -> Result<Uint128, ContractError> {
+    Ok(Decimal::from_ratio(min_position_size_usd, 0_u64)
+        .checked_div(get_collateral_price(deps, &collateral_index)?)?
+        .to_uint_floor())
+}
+
+pub fn get_trade_liquidation_price(
+    open_price: Decimal,
+    long: bool,
+    collateral: Uint128,
+    leverage: Uint128,
+    fees_collateral: Uint128,
+) -> Result<Decimal, ContractError> {
+    let collateral_liq_negative_pnl =
+        LIQ_THRESHOLD_P.checked_mul(Decimal::from_ratio(collateral, 0_u64))?;
+
+    let liq_price_distance = open_price
+        .checked_mul(
+            collateral_liq_negative_pnl
+                .checked_sub(Decimal::from_ratio(fees_collateral, 0_u64))?,
+        )?
+        .checked_div(Decimal::from_ratio(collateral, 0_u64))?
+        .checked_div(Decimal::from_ratio(leverage, 0_u64))?;
+
+    let liq_price = if long {
+        open_price.checked_sub(liq_price_distance)?
+    } else {
+        open_price.checked_add(liq_price_distance)?
+    };
+
+    return Ok(liq_price);
 }

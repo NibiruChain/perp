@@ -99,6 +99,12 @@ pub enum ContractError {
 
     #[error("invalid trade type")]
     InvalidTradeType,
+
+    #[error("trading is paused")]
+    Paused,
+
+    #[error("invalid trigger price")]
+    InvalidTriggerPrice,
 }
 
 impl From<serde_json::Error> for ContractError {

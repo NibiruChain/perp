@@ -1,5 +1,7 @@
-use crate::borrowing::handle_trade_borrowing;
 use crate::borrowing::state::{GROUP_OIS, PAIR_OIS};
+use crate::borrowing::{
+    get_trade_liquidation_price_with_fees, handle_trade_borrowing,
+};
 use crate::constants::{
     GOV_PRICE_COLLATERAL_INDEX, MAX_OPEN_NEGATIVE_PNL_P, MAX_PNL_P, MAX_SL_P,
 };
@@ -15,8 +17,9 @@ use crate::price_impact::{
     remove_price_impact_open_interest,
 };
 use crate::trading::state::{
-    LimitOrder, OpenOrderType, Trade, TradeInfo, TradeType, COLLATERALS,
-    TRADER_STORED, TRADES, TRADE_INFOS, USER_COUNTERS,
+    OpenOrderType, PendingOrderType, Trade, TradeInfo, TradeType,
+    TradingActivated, COLLATERALS, TRADER_STORED, TRADES, TRADE_INFOS,
+    TRADING_ACTIVATED, USER_COUNTERS,
 };
 use cosmwasm_std::{
     to_json_binary, Addr, BankMsg, Coin, Decimal, Deps, DepsMut, Env,
@@ -78,16 +81,21 @@ pub fn open_trade(
     if trade.trade_type != TradeType::Trade {
         // limit orders are stored as such in the same state, we just don't
         // update the open interest since they are not "live"
-        msgs =
-            store_trade(deps, env, trade.clone(), None, Some(max_slippage_p))?;
+        msgs = store_trade(
+            deps,
+            env.clone(),
+            trade.clone(),
+            None,
+            Some(max_slippage_p),
+        )?;
     } else {
         validate_trade(
             deps.as_ref(),
+            env.clone(),
             trade.clone(),
             position_size_usd,
             base_price,
             base_price,
-            pair.spread_p,
             max_slippage_p,
         )?;
         let height = env.clone().block.height;
@@ -156,7 +164,6 @@ fn process_opening_fees(
     if false {
         // handle referral fees
         total_fees_collateral += reward1;
-        todo!()
     }
 
     let gov_fee_collateral: Uint128 = distribute_gov_fee_collateral(
@@ -466,7 +473,7 @@ fn add_oi_collateral(
     position_collateral: Uint128,
 ) -> Result<(), ContractError> {
     handle_trade_borrowing(
-        env,
+        env.clone(),
         deps.storage,
         trade.collateral_index,
         trade.pair_index,
@@ -476,6 +483,7 @@ fn add_oi_collateral(
     )?;
     add_price_impact_open_interest(
         deps,
+        env.clone(),
         trade,
         trade_info,
         position_collateral,
@@ -503,7 +511,7 @@ fn remove_oi_collateral(
     position_collateral: Uint128,
 ) -> Result<(), ContractError> {
     handle_trade_borrowing(
-        env,
+        env.clone(),
         deps.storage,
         trade.collateral_index,
         trade.pair_index,
@@ -511,22 +519,29 @@ fn remove_oi_collateral(
         false,
         trade.long,
     )?;
-    remove_price_impact_open_interest(deps, trade, position_collateral)?;
+    remove_price_impact_open_interest(
+        deps,
+        env.clone(),
+        trade,
+        position_collateral,
+    )?;
 
     Ok(())
 }
 
 fn validate_trade(
     deps: Deps,
+    env: Env,
     trade: Trade,
     position_size_usd: Uint128,
     execution_price: Decimal,
     market_price: Decimal,
-    spread_p: Decimal,
     max_slippage_p: Decimal,
-) -> Result<(), ContractError> {
+) -> Result<(Decimal, Decimal), ContractError> {
     let position_size_collateral =
         get_position_size_collateral(trade.collateral_amount, trade.leverage)?;
+
+    let spread_p = PAIRS.load(deps.storage, trade.pair_index)?.spread_p;
 
     if market_price.is_zero() {
         return Err(ContractError::TradeInvalid);
@@ -534,6 +549,7 @@ fn validate_trade(
 
     let (price_impact_p, price_after_impact) = get_trade_price_impact(
         deps.storage,
+        env,
         get_market_execution_price(execution_price, spread_p, trade.long),
         trade.pair_index,
         trade.long,
@@ -580,7 +596,7 @@ fn validate_trade(
         return Err(ContractError::PriceImpactTooHigh);
     }
 
-    Ok(())
+    Ok((price_impact_p, price_after_impact))
 }
 
 fn get_market_execution_price(
@@ -714,13 +730,6 @@ fn limit_sl_distance(
     }
 }
 
-pub fn trigger_order(
-    _deps: Deps,
-    _order_id: u64,
-) -> Result<Response, ContractError> {
-    todo!()
-}
-
 pub fn close_trade(
     deps: &mut DepsMut,
     env: Env,
@@ -833,36 +842,212 @@ pub fn cancel_open_order(
 
 pub fn update_tp(
     deps: &mut DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _pair_index: u64,
-    _index: u64,
-    _new_tp: Decimal,
+    env: Env,
+    info: MessageInfo,
+    index: u64,
+    new_tp: Decimal,
 ) -> Result<Response, ContractError> {
-    todo!()
+    let mut trade = TRADES.load(deps.storage, (info.sender.clone(), index))?;
+    let mut trade_info =
+        TRADE_INFOS.load(deps.storage, (trade.user.clone(), trade.index))?;
+
+    if !trade.is_open {
+        return Err(ContractError::TradeClosed);
+    }
+    if trade.trade_type != TradeType::Trade {
+        return Err(ContractError::InvalidTradeType);
+    }
+
+    let new_tp =
+        limit_tp_distance(trade.open_price, trade.leverage, new_tp, trade.long)?;
+
+    trade.tp = new_tp;
+    trade_info.tp_last_updated_block = env.block.height;
+
+    TRADES.save(deps.storage, (trade.user.clone(), trade.pair_index), &trade)?;
+    TRADE_INFOS.save(
+        deps.storage,
+        (trade.user.clone(), trade.pair_index),
+        &trade_info,
+    )?;
+    Ok(Response::new().add_attribute("action", "update_tp"))
 }
 
 pub fn update_sl(
     deps: &mut DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _pair_index: u64,
-    _index: u64,
-    _new_sl: Decimal,
+    env: Env,
+    info: MessageInfo,
+    index: u64,
+    new_sl: Decimal,
 ) -> Result<Response, ContractError> {
-    todo!()
+    let mut trade = TRADES.load(deps.storage, (info.sender.clone(), index))?;
+    let mut trade_info =
+        TRADE_INFOS.load(deps.storage, (trade.user.clone(), trade.index))?;
+
+    if !trade.is_open {
+        return Err(ContractError::TradeClosed);
+    }
+    if trade.trade_type != TradeType::Trade {
+        return Err(ContractError::InvalidTradeType);
+    }
+
+    let new_sl =
+        limit_sl_distance(trade.open_price, trade.leverage, new_sl, trade.long)?;
+
+    trade.sl = new_sl;
+    trade_info.sl_last_updated_block = env.block.height;
+
+    TRADES.save(deps.storage, (trade.user.clone(), trade.pair_index), &trade)?;
+    TRADE_INFOS.save(
+        deps.storage,
+        (trade.user.clone(), trade.pair_index),
+        &trade_info,
+    )?;
+    Ok(Response::new().add_attribute("action", "update_sl"))
 }
 
-pub fn execute_limit_order(
+pub fn trigger_limit_order(
     deps: &mut DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _order_type: LimitOrder,
-    _trader: String,
-    _pair_index: u64,
-    _index: u64,
-    _nft_id: u64,
-    _nft_type: u8,
+    env: Env,
+    trader: Addr,
+    info: MessageInfo,
+    index: u64,
+    mut pending_order_type: PendingOrderType,
 ) -> Result<Response, ContractError> {
-    todo!()
+    if is_order_type_market(&pending_order_type) {
+        return Err(ContractError::InvalidTradeType);
+    }
+
+    let is_open_limit = pending_order_type == PendingOrderType::LimitOpen
+        || pending_order_type == PendingOrderType::StopOpen;
+
+    let activated = TRADING_ACTIVATED.load(deps.storage)?;
+
+    if is_open_limit && activated != TradingActivated::Activated
+        || !is_open_limit && activated == TradingActivated::Paused
+    {
+        return Err(ContractError::Paused);
+    }
+
+    let trade = TRADES.load(deps.storage, (trader.clone(), index))?;
+    if !trade.is_open {
+        return Err(ContractError::TradeClosed);
+    }
+
+    if pending_order_type == PendingOrderType::LiqClose && !trade.sl.is_zero() {
+        let liq_price = get_trade_liquidation_price_with_fees(
+            &deps.as_ref(),
+            env.clone(),
+            trade.clone(),
+            true,
+        )?;
+
+        // if liq price not closer than SL, turn order into a SL
+        if (trade.long && liq_price <= trade.sl)
+            || (!trade.long && liq_price >= trade.sl)
+        {
+            pending_order_type = PendingOrderType::SlClose;
+        }
+    }
+
+    let position_size_collateral =
+        get_position_size_collateral(trade.collateral_amount, trade.leverage)?;
+
+    if is_open_limit {
+        let leveraged_pos_usd = get_position_size_collateral(
+            trade.collateral_amount,
+            trade.leverage,
+        )?;
+
+        let (price_impact_p, _) = get_trade_price_impact(
+            deps.storage,
+            env.clone(),
+            Decimal::zero(),
+            trade.pair_index,
+            trade.long,
+            leveraged_pos_usd,
+        )?;
+
+        if price_impact_p
+            .checked_mul(Decimal::from_atomics(trade.leverage, 0)?)?
+            > MAX_OPEN_NEGATIVE_PNL_P
+        {
+            return Err(ContractError::PriceImpactTooHigh);
+        }
+    }
+
+    let trigger_price = get_token_price(&deps.as_ref(), &trade.pair_index)?;
+
+    Ok(execute_trigger(
+        deps,
+        env,
+        info,
+        trigger_price,
+        trade,
+        pending_order_type,
+        position_size_collateral,
+    )?)
+}
+
+fn execute_trigger(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trigger_price: Decimal,
+    trade: Trade,
+    pending_order_type: PendingOrderType,
+    position_size_collateral: Uint128,
+) -> Result<Response, ContractError> {
+    let mut trade = trade.clone();
+    let trade_info =
+        TRADE_INFOS.load(deps.storage, (trade.user.clone(), trade.index))?;
+
+    let (_, price_after_impact) = validate_trade(
+        deps.as_ref(),
+        env.clone(),
+        trade.clone(),
+        get_usd_normalized_value(
+            get_collateral_price_usd(&deps.as_ref(), trade.collateral_index)?,
+            position_size_collateral,
+        )?,
+        trigger_price,
+        trigger_price,
+        trade_info.max_slippage_p,
+    )?;
+
+    let no_hit = if trade.trade_type == TradeType::Stop {
+        if trade.long {
+            trade.open_price < trigger_price
+        } else {
+            trade.open_price > trigger_price
+        }
+    } else {
+        false
+    };
+
+    if no_hit {
+        return Err(ContractError::InvalidTriggerPrice);
+    }
+
+    close_trade(deps, env.clone(), info, trade.index)?;
+
+    // register the market trade
+    trade.open_price = price_after_impact;
+    trade.trade_type = TradeType::Trade;
+
+    register_trade(deps, env.clone(), trade, trade_info, todo!())?;
+
+    Ok(Response::new().add_attribute("action", "trigger_limit_order"))
+}
+
+fn is_order_type_market(pending_order_type: &PendingOrderType) -> bool {
+    let market_order_types: Vec<PendingOrderType> = vec![
+        PendingOrderType::MarketOpen,
+        PendingOrderType::MarketClose,
+        PendingOrderType::UpdateLeverage,
+        PendingOrderType::MarketPartialOpen,
+        PendingOrderType::MarketPartialClose,
+    ];
+
+    market_order_types.contains(&pending_order_type)
 }

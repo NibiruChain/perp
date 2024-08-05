@@ -1,12 +1,23 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Decimal256, Timestamp, Uint128};
-use cw_storage_plus::Map;
+use cw_storage_plus::{Item, Map};
 
 pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
 pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
 pub const TRADE_INFOS: Map<(Addr, u64), TradeInfo> = Map::new("trade_infos");
 pub const TRADER_STORED: Map<Addr, bool> = Map::new("trader_stored");
 pub const USER_COUNTERS: Map<Addr, u64> = Map::new("user_counters");
+
+// todo: make message for this
+pub const TRADING_ACTIVATED: Item<TradingActivated> =
+    Item::new("trading_activated");
+
+#[cw_serde]
+pub enum TradingActivated {
+    Activated,
+    CloseOnly,
+    Paused,
+}
 
 #[cw_serde]
 pub struct Trader {

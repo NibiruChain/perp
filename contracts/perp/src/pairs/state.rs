@@ -50,7 +50,7 @@ pub struct Fee {
     pub close_fee_p: Decimal,  // 1e10 (% of position size)
     pub oracle_fee_p: Decimal, // 1e10 (% of position size)
     pub trigger_order_fee_p: Decimal, // 1e10 (% of position size)
-    pub min_position_size_usd: Decimal, // 1e18 (collateral x leverage, useful for min fee)
+    pub min_position_size_usd: Uint128,
 }
 
 impl Fee {
@@ -58,8 +58,10 @@ impl Fee {
         let one = Decimal::one();
         let two = one + one;
 
-        Ok((self.min_position_size_usd
-            * (self.open_fee_p.checked_mul(two)? + self.trigger_order_fee_p))
-            .to_uint_floor())
+        Ok((Decimal::from_ratio(self.min_position_size_usd, 0_u64)
+            .checked_mul(
+                self.open_fee_p.checked_mul(two)? + self.trigger_order_fee_p,
+            )?)
+        .to_uint_floor())
     }
 }

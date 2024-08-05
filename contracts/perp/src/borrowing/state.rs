@@ -9,7 +9,7 @@ pub const PAIR_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
 pub const GROUPS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
 pub const GROUP_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
 
-// todo: check why it's not used
+// todo: add this initial acc fees for borrowing fee
 // pub const INITIAL_ACC_FEES: Item<
 //     HashMap<(u64, Addr, u32), BorrowingInitialAccFees>,
 // > = Item::new("initial_acc_fees");

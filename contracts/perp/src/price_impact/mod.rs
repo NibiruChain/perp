@@ -1,6 +1,6 @@
 pub mod state;
 
-use cosmwasm_std::{Addr, Decimal, DepsMut, Storage, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Decimal, DepsMut, Env, Storage, Timestamp, Uint128};
 use state::{OiWindowsSettings, OI_WINDOWS_SETTINGS, PAIR_DEPTHS, WINDOWS};
 
 use crate::{
@@ -15,12 +15,11 @@ fn get_window_id(timestamp: Timestamp, settings: &OiWindowsSettings) -> u64 {
     (timestamp.seconds() - settings.start_ts) / settings.windows_duration
 }
 
-fn get_current_window_id(settings: &OiWindowsSettings) -> u64 {
-    get_window_id(current_timestamp(), settings)
-}
-
-fn current_timestamp() -> Timestamp {
-    todo!()
+fn get_current_window_id(
+    settings: &OiWindowsSettings,
+    current_timestamp: Timestamp,
+) -> u64 {
+    get_window_id(current_timestamp, settings)
 }
 
 fn get_earliest_active_window_id(
@@ -63,6 +62,7 @@ fn _get_trade_price_impact(
 
 fn get_price_impact_oi(
     storage: &dyn Storage,
+    env: Env,
     pair_index: u64,
     long: bool,
 ) -> Result<Uint128, ContractError> {
@@ -72,7 +72,7 @@ fn get_price_impact_oi(
         return Ok(Uint128::zero());
     }
 
-    let current_window_id = get_current_window_id(&settings);
+    let current_window_id = get_current_window_id(&settings, env.block.time);
     let earliest_active_window_id =
         get_earliest_active_window_id(current_window_id, settings.windows_count);
 
@@ -92,6 +92,7 @@ fn get_price_impact_oi(
 
 pub fn get_trade_price_impact(
     storage: &dyn Storage,
+    env: Env,
     open_price: Decimal,
     pair_index: u64,
     long: bool,
@@ -106,7 +107,7 @@ pub fn get_trade_price_impact(
     };
 
     let start_open_interest_usd = if depth > 0 {
-        get_price_impact_oi(storage, pair_index, long)?
+        get_price_impact_oi(storage, env, pair_index, long)?
     } else {
         Uint128::zero()
     };
@@ -122,17 +123,18 @@ pub fn get_trade_price_impact(
 
 pub fn add_price_impact_open_interest(
     deps: &mut DepsMut,
+    env: Env,
     trade: Trade,
     trade_info: TradeInfo,
     position_collateral: Uint128,
 ) -> Result<(), ContractError> {
     let oi_window_settings = OI_WINDOWS_SETTINGS.load(deps.storage)?;
-    let current_window_id = get_current_window_id(&oi_window_settings);
+    let current_window_id =
+        get_current_window_id(&oi_window_settings, env.block.time);
 
     let current_collateral_price =
         get_token_price(&deps.as_ref(), &trade.collateral_index)?;
 
-    // todo! fix unused variable oi_delta_usd
     let mut oi_delta_usd = convert_collateral_to_usd(
         &trade.collateral_index,
         &trade.pair_index,
@@ -153,6 +155,7 @@ pub fn add_price_impact_open_interest(
             get_trade_last_window_oi_usd(&trade.user, &trade.pair_index);
         remove_price_impact_open_interest(
             deps,
+            env.clone(),
             trade.clone(),
             Uint128::from(last_window_oi_usd),
         )?;
@@ -181,7 +184,7 @@ pub fn add_price_impact_open_interest(
 
     // update trade info
     let mut trade_info = trade_info;
-    trade_info.last_oi_update_ts = current_timestamp();
+    trade_info.last_oi_update_ts = env.block.time;
     trade_info.collateral_price_usd = current_collateral_price;
 
     TRADE_INFOS.save(
@@ -205,11 +208,12 @@ pub fn add_price_impact_open_interest(
 
 pub fn remove_price_impact_open_interest(
     deps: &mut DepsMut,
+    env: Env,
     trade: Trade,
     oi_delta_collateral: Uint128,
 ) -> Result<(), ContractError> {
-    let trade_info = TRADE_INFOS
-        .load(deps.storage, (trade.user.clone(), trade.index))?;
+    let trade_info =
+        TRADE_INFOS.load(deps.storage, (trade.user.clone(), trade.index))?;
 
     let oi_window_settings = OI_WINDOWS_SETTINGS.load(deps.storage)?;
 
@@ -219,7 +223,8 @@ pub fn remove_price_impact_open_interest(
         return Ok(());
     }
 
-    let current_window_id = get_current_window_id(&oi_window_settings);
+    let current_window_id =
+        get_current_window_id(&oi_window_settings, env.block.time.clone());
     let add_window_id =
         get_window_id(trade_info.last_oi_update_ts, &oi_window_settings);
     let not_outdated =
