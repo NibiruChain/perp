@@ -1,7 +1,8 @@
-use cosmwasm_std::{Decimal, Deps, Env, Storage, Uint128};
+use cosmwasm_std::{Addr, Decimal, Deps, Env, Storage, Uint128};
 use state::{
-    BorrowingData, OpenInterest, PendingBorrowingAccFeesInput, GROUPS,
-    GROUP_OIS, PAIRS, PAIR_GROUPS, PAIR_OIS,
+    BorrowingData, BorrowingInitialAccFees, OpenInterest,
+    PendingBorrowingAccFeesInput, GROUPS, GROUP_OIS, INITIAL_ACC_FEES, PAIRS,
+    PAIR_GROUPS, PAIR_OIS,
 };
 
 use crate::{
@@ -14,6 +15,8 @@ pub mod state;
 
 pub fn handle_trade_borrowing(
     env: Env,
+    sender: Addr,
+    trade_index: u64,
     storage: &mut dyn Storage,
     collateral_index: u64,
     pair_index: u64,
@@ -57,13 +60,13 @@ pub fn handle_trade_borrowing(
 
     if open {
         reset_trade_borrowing_fees(
+            sender,
             storage,
             collateral_index,
+            trade_index,
             pair_index,
             group_index,
             long,
-            open,
-            position_collateral,
             block_number,
         )?;
     }
@@ -71,13 +74,13 @@ pub fn handle_trade_borrowing(
 }
 
 fn reset_trade_borrowing_fees(
+    sender: Addr,
     storage: &mut dyn Storage,
     collateral_index: u64,
+    trade_index: u64,
     pair_index: u64,
     group_index: u64,
     long: bool,
-    _open: bool,
-    _position_collateral: Uint128,
     current_block: u64,
 ) -> Result<(), ContractError> {
     let pair_borrowing_data = get_borrowing_pair_pending_acc_fees(
@@ -94,17 +97,23 @@ fn reset_trade_borrowing_fees(
         current_block,
     )?;
 
-    if long {
-        pair_borrowing_data.acc_fee_long
-    } else {
-        pair_borrowing_data.acc_fee_short
-    };
-    if long {
-        group_borrowing_data.acc_fee_long
-    } else {
-        group_borrowing_data.acc_fee_short
-    };
-    current_block;
+    INITIAL_ACC_FEES.save(
+        storage,
+        (collateral_index, sender, trade_index),
+        &BorrowingInitialAccFees {
+            acc_pair_fee: if long {
+                pair_borrowing_data.acc_fee_long
+            } else {
+                pair_borrowing_data.acc_fee_short
+            },
+            acc_group_fee: if long {
+                group_borrowing_data.acc_fee_long
+            } else {
+                group_borrowing_data.acc_fee_short
+            },
+            block: current_block,
+        },
+    )?;
 
     Ok(())
 }
@@ -431,5 +440,5 @@ pub fn get_trade_liquidation_price(
         open_price.checked_add(liq_price_distance)?
     };
 
-    return Ok(liq_price);
+    Ok(liq_price)
 }

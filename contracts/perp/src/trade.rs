@@ -474,6 +474,8 @@ fn add_oi_collateral(
 ) -> Result<(), ContractError> {
     handle_trade_borrowing(
         env.clone(),
+        trade.user.clone(),
+        trade.index,
         deps.storage,
         trade.collateral_index,
         trade.pair_index,
@@ -512,6 +514,8 @@ fn remove_oi_collateral(
 ) -> Result<(), ContractError> {
     handle_trade_borrowing(
         env.clone(),
+        trade.user.clone(),
+        trade.index,
         deps.storage,
         trade.collateral_index,
         trade.pair_index,
@@ -978,7 +982,7 @@ pub fn trigger_limit_order(
 
     let trigger_price = get_token_price(&deps.as_ref(), &trade.pair_index)?;
 
-    Ok(execute_trigger(
+    execute_trigger(
         deps,
         env,
         info,
@@ -986,7 +990,7 @@ pub fn trigger_limit_order(
         trade,
         pending_order_type,
         position_size_collateral,
-    )?)
+    )
 }
 
 fn execute_trigger(
@@ -995,7 +999,7 @@ fn execute_trigger(
     info: MessageInfo,
     trigger_price: Decimal,
     trade: Trade,
-    pending_order_type: PendingOrderType,
+    _pending_order_type: PendingOrderType,
     position_size_collateral: Uint128,
 ) -> Result<Response, ContractError> {
     let mut trade = trade.clone();
@@ -1049,5 +1053,5 @@ fn is_order_type_market(pending_order_type: &PendingOrderType) -> bool {
         PendingOrderType::MarketPartialClose,
     ];
 
-    market_order_types.contains(&pending_order_type)
+    market_order_types.contains(pending_order_type)
 }

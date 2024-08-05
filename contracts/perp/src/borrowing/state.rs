@@ -8,11 +8,8 @@ pub const PAIR_GROUPS: Map<(u64, u64), Vec<BorrowingPairGroup>> =
 pub const PAIR_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
 pub const GROUPS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
 pub const GROUP_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
-
-// todo: add this initial acc fees for borrowing fee
-// pub const INITIAL_ACC_FEES: Item<
-//     HashMap<(u64, Addr, u32), BorrowingInitialAccFees>,
-// > = Item::new("initial_acc_fees");
+pub const INITIAL_ACC_FEES: Map<(u64, Addr, u64), BorrowingInitialAccFees> =
+    Map::new("initial_acc_fees");
 
 #[cw_serde]
 pub struct BorrowingData {

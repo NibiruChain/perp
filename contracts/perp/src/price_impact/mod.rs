@@ -224,7 +224,7 @@ pub fn remove_price_impact_open_interest(
     }
 
     let current_window_id =
-        get_current_window_id(&oi_window_settings, env.block.time.clone());
+        get_current_window_id(&oi_window_settings, env.block.time);
     let add_window_id =
         get_window_id(trade_info.last_oi_update_ts, &oi_window_settings);
     let not_outdated =
