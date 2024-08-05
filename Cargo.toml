@@ -34,7 +34,7 @@ proc-macro2 = "1.0"
 test-app = { path = "packages/test-app" }
 bash-rs = { path = "packages/bash-rs" }
 
-syn = { version = "1", features = ["full"] }
+syn = { version = "2", features = ["full"] }
 cw-multi-test = { version = "2.1.0", features = [
     "cosmwasm_2_0",
     "staking",
