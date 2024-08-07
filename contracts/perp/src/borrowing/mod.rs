@@ -1,17 +1,130 @@
 use cosmwasm_std::{Addr, Decimal, Deps, Env, Storage, Uint128};
 use state::{
-    BorrowingData, BorrowingInitialAccFees, OpenInterest,
-    PendingBorrowingAccFeesInput, GROUPS, GROUP_OIS, INITIAL_ACC_FEES, PAIRS,
-    PAIR_GROUPS, PAIR_OIS,
+    BorrowingData, BorrowingFeeInput, BorrowingInitialAccFees,
+    BorrowingPairGroup, OpenInterest, PendingBorrowingAccFeesInput, GROUPS,
+    GROUP_OIS, INITIAL_ACC_FEES, PAIRS, PAIR_GROUPS, PAIR_OIS,
 };
 
 use crate::{
     constants::LIQ_THRESHOLD_P, error::ContractError,
     fees::calculate_fee_amount, pairs::state::FEES, trade::get_collateral_price,
-    trading::state::Trade,
+    trading::state::Trade, utils::u128_to_dec,
 };
 
 pub mod state;
+
+pub fn get_trade_borrowing_fees(
+    deps: &Deps,
+    env: Env,
+    input: BorrowingFeeInput,
+) -> Result<Uint128, ContractError> {
+    let intial_fees = INITIAL_ACC_FEES.load(
+        deps.storage,
+        (input.collateral_index, input.trader, input.index),
+    )?;
+
+    let pair_groups = PAIR_GROUPS
+        .load(deps.storage, (input.collateral_index, input.pair_index))?;
+
+    let first_pair_group: BorrowingPairGroup;
+    if pair_groups.len() > 0 {
+        first_pair_group = *pair_groups.first().unwrap();
+    }
+
+    let borrowing_fee_p: Decimal;
+    // If pair has had no group after trade was opened,
+    // initialize with pair borrowing fee
+    if pair_groups.len() == 0 || first_pair_group.block > intial_fees.block {
+        borrowing_fee_p = (if pair_groups.len() == 0 {
+            let group = get_borrowing_group_pending_acc_fees(
+                deps.storage,
+                input.collateral_index,
+                first_pair_group.group_index,
+                env.block.height,
+            )?;
+
+            if input.long {
+                group.acc_fee_long
+            } else {
+                group.acc_fee_short
+            }
+        } else {
+            if input.long {
+                first_pair_group.pair_acc_fee_long
+            } else {
+                first_pair_group.pair_acc_fee_short
+            }
+        }) - intial_fees.acc_pair_fee;
+    }
+
+    // Sum of max(pair fee, group fee) for all groups the pair was in while trade was open
+    let mut next_group: BorrowingPairGroup;
+    for group in pair_groups.iter().rev() {
+        let (delta_group, delta_pair, before_trade_open) =
+            get_borrowing_pair_group_acc_fees_deltas(
+                deps.storage,
+                group,
+                next_group,
+                intial_fees,
+                input.long,
+            )?;
+
+        next_group = *group;
+
+        borrowing_fee_p += Decimal::max(delta_group, delta_pair);
+        if before_trade_open {
+            break;
+        }
+    }
+
+    let fee_amount_collateral =
+        u128_to_dec(input.collateral.checked_mul(input.leverage)?)?
+            .checked_mul(borrowing_fee_p)?
+            .to_uint_floor();
+
+    Ok(fee_amount_collateral)
+}
+
+fn get_borrowing_pair_group_acc_fees_deltas(
+    storage: &dyn Storage,
+    collateral_index: u64,
+    group: BorrowingPairGroup,
+    next_group: Option<BorrowingPairGroup>,
+    initial_fees: BorrowingInitialAccFees,
+    last_active_group: bool,
+    pair_index: u64,
+    group_index: u64,
+    height: u64,
+    block: u64,
+    long: bool,
+) -> Result<(Decimal, Decimal, bool), ContractError> {
+    let before_trade_open = group.block < initial_fees.block;
+
+    let delta_group: Decimal;
+    let delta_pair: Decimal;
+
+    if Some(next_group) {
+        delta_group = get_direction_borrowing_group_pending_acc_fees(
+            storage,
+            collateral_index,
+            group_index,
+            height,
+            long,
+        )?;
+
+        delta_pair = get_direction_borrowing_pair_pending_acc_fees(
+            storage,
+            collateral_index,
+            pair_index,
+            height,
+            long,
+        )?;
+    } else {
+        // previous group
+    }
+
+    Ok(())
+}
 
 pub fn handle_trade_borrowing(
     env: Env,
@@ -209,8 +322,50 @@ fn set_group_pending_acc_fees(
     Ok(GROUPS.save(storage, (collateral_index, group_index), &group)?)
 }
 
+fn get_direction_borrowing_group_pending_acc_fees(
+    storage: &dyn Storage,
+    collateral_index: u64,
+    group_index: u64,
+    block_number: u64,
+    long: bool,
+) -> Result<Decimal, ContractError> {
+    let group = get_borrowing_group_pending_acc_fees(
+        storage,
+        collateral_index,
+        group_index,
+        block_number,
+    )?;
+
+    Ok(if long {
+        group.acc_fee_long
+    } else {
+        group.acc_fee_short
+    })
+}
+
+fn get_direction_borrowing_pair_pending_acc_fees(
+    storage: &dyn Storage,
+    collateral_index: u64,
+    pair_index: u64,
+    block_number: u64,
+    long: bool,
+) -> Result<Decimal, ContractError> {
+    let pair = get_borrowing_pair_pending_acc_fees(
+        storage,
+        collateral_index,
+        pair_index,
+        block_number,
+    )?;
+
+    Ok(if long {
+        pair.acc_fee_long
+    } else {
+        pair.acc_fee_short
+    })
+}
+
 fn get_borrowing_group_pending_acc_fees(
-    storage: &mut dyn Storage,
+    storage: &dyn Storage,
     collateral_index: u64,
     group_index: u64,
     block_number: u64,
@@ -267,7 +422,7 @@ fn get_borrowing_pair_pending_acc_fees(
         fee_exponent: pair.fee_exponent,
     };
 
-    let (acc_fee_long, acc_fee_short, _pair_acc_fee_delta): (u64, u64, u64) =
+    let (acc_fee_long, acc_fee_short, _pair_acc_fee_delta) =
         get_borrowing_pending_acc_fees(input)?;
 
     pair.acc_fee_long = acc_fee_long;
@@ -291,7 +446,7 @@ fn get_pair_ois_collateral(
 /// Function that returns the new acc borrowing fees and delta between two blocks (for pairs and groups)
 fn get_borrowing_pending_acc_fees(
     input: PendingBorrowingAccFeesInput,
-) -> Result<(u64, u64, u64), ContractError> {
+) -> Result<(Decimal, Decimal, Decimal), ContractError> {
     if input.current_block < input.acc_last_updated_block {
         return Err(ContractError::BlockOrder);
     }
@@ -305,24 +460,16 @@ fn get_borrowing_pending_acc_fees(
     let delta = if !input.max_oi.is_zero() && input.fee_exponent > 0 {
         input
             .fee_per_block
-            .checked_mul(Decimal::from_atomics(
-                input.current_block - input.acc_last_updated_block,
-                0,
+            .checked_mul(u128_to_dec(
+                (input.current_block - input.acc_last_updated_block).into(),
             )?)?
             .checked_mul(
                 Decimal::from_ratio(net_oi, input.max_oi)
                     .pow(input.fee_exponent),
             )?
-            .to_uint_floor()
     } else {
-        Uint128::zero()
+        Decimal::zero()
     };
-
-    if delta > u64::MAX.into() {
-        return Err(ContractError::Overflow);
-    }
-
-    let delta = delta.u128() as u64;
 
     let acc_fee_long = if !more_shorts {
         input.acc_fee_long + delta

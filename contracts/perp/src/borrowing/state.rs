@@ -14,8 +14,8 @@ pub const INITIAL_ACC_FEES: Map<(u64, Addr, u64), BorrowingInitialAccFees> =
 #[cw_serde]
 pub struct BorrowingData {
     pub fee_per_block: Decimal, // %
-    pub acc_fee_long: u64,      // %
-    pub acc_fee_short: u64,     // %
+    pub acc_fee_long: Decimal,  // %
+    pub acc_fee_short: Decimal, // %
     pub acc_last_updated_block: u64,
     pub fee_exponent: u32,
 }
@@ -41,8 +41,8 @@ pub struct OpenInterest {
 
 #[cw_serde]
 pub struct BorrowingInitialAccFees {
-    pub acc_pair_fee: u64,  // %
-    pub acc_group_fee: u64, // %
+    pub acc_pair_fee: Decimal,  // %
+    pub acc_group_fee: Decimal, // %
     pub block: u64,
 }
 
@@ -63,13 +63,13 @@ pub struct BorrowingGroupParams {
 
 #[cw_serde]
 pub struct BorrowingFeeInput {
-    collateral_index: u8,
-    trader: Addr, // address is represented as String in Rust
-    pair_index: u16,
-    index: u32,
-    long: bool,
-    collateral: Uint128, // 1e18 | 1e6 (collateral) - Using Uint128 to represent the wider bit-width type
-    leverage: Uint128, // 1e3 - Using Uint128 to represent the wider bit-width type
+    pub collateral_index: u64,
+    pub trader: Addr, // address is represented as String in Rust
+    pub pair_index: u64,
+    pub index: u64,
+    pub long: bool,
+    pub collateral: Uint128, // 1e18 | 1e6 (collateral) - Using Uint128 to represent the wider bit-width type
+    pub leverage: Uint128, // 1e3 - Using Uint128 to represent the wider bit-width type
 }
 
 #[cw_serde]
@@ -87,8 +87,8 @@ pub struct LiqPriceInput {
 
 #[cw_serde]
 pub struct PendingBorrowingAccFeesInput {
-    pub acc_fee_long: u64,      // %
-    pub acc_fee_short: u64,     // %
+    pub acc_fee_long: Decimal,  // %
+    pub acc_fee_short: Decimal, // %
     pub oi_long: Uint128, // 1e18 | 1e6 - Using Uint128 to represent the wider bit-width type
     pub oi_short: Uint128, // 1e18 | 1e6 - Using Uint128 to represent the wider bit-width type
     pub fee_per_block: Decimal, // 1e10

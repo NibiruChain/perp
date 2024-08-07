@@ -7,6 +7,7 @@ pub mod price_impact;
 pub mod query;
 pub mod trade;
 pub mod trading;
+pub mod utils;
 
 // #[cfg(not(feature = "library"))]
 // When imported with the "library" feature, contract.rs will not be compiled.

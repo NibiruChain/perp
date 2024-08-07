@@ -12,10 +12,7 @@ fn long_btc_and_close() {
     let pair_index = 0;
     let _collateral_index = 0;
 
-    app.set_up_oracle_asset(
-        pair_index,
-        Decimal::from_atomics(69_000_u64, 0).unwrap(),
-    );
+    app.set_up_oracle_asset(pair_index, u128_to_dec(69_000_u64, 0).unwrap());
     app.set_up_oracle_collateral(pair_index, Decimal::percent(101));
     app.create_default_pairs();
 

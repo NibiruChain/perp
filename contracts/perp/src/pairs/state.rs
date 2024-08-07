@@ -19,6 +19,7 @@ pub const PAIR_CUSTOM_MAX_LEVERAGE: Map<u64, Uint128> =
 
 pub const ORACLE_ADDRESS: Item<Addr> = Item::new("oracle_address");
 pub const STAKING_ADDRESS: Item<Addr> = Item::new("staking_address");
+pub const VAULT_ADDRESS: Item<Addr> = Item::new("vault_address");
 
 #[cw_serde]
 pub struct Pair {

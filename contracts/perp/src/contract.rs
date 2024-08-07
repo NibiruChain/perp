@@ -10,7 +10,7 @@ use crate::{
         STAKING_ADDRESS,
     },
     trade::{
-        cancel_open_order, close_trade, open_trade, trigger_limit_order,
+        cancel_open_order, close_trade, open_trade, trigger_trade,
         update_open_order, update_sl, update_tp,
     },
 };
@@ -62,7 +62,7 @@ pub fn execute(
             order_type,
             slippage_p,
             referral: _,
-        } => open_trade(&mut deps, env, info, trade, order_type, slippage_p),
+        } => open_trade(&mut deps, env, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { index } => {
             close_trade(&mut deps, env, info, index)
         }
@@ -84,13 +84,11 @@ pub fn execute(
         ExecuteMsg::UpdateSl { index, new_sl } => {
             update_sl(&mut deps, env, info, index, new_sl)
         }
-        ExecuteMsg::TriggerLimitOrder {
+        ExecuteMsg::TriggerTrade {
             trader,
             index,
             order_type,
-        } => {
-            trigger_limit_order(&mut deps, env, trader, info, index, order_type)
-        }
+        } => trigger_trade(&mut deps, env, trader, info, index, order_type),
         ExecuteMsg::AdminMsg { msg } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
             execute_admin(&mut deps, env, msg)

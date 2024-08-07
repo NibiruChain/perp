@@ -4,6 +4,7 @@ use cw_storage_plus::{Item, Map};
 
 pub const FEE_TIERS: Item<[FeeTier; 8]> = Item::new("fee_tiers");
 pub const PENDING_GOV_FEES: Map<u64, Uint128> = Map::new("fees");
+pub const VAULT_CLOSING_FEE_P: Item<Decimal> = Item::new("vault_closing_fee_p");
 // trader -> day -> TraderDailyInfo
 pub const TRADER_DAILY_INFOS: Map<(String, u64), TraderDailyInfo> =
     Map::new("trader_daily_infos");

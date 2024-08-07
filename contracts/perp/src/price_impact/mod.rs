@@ -1,12 +1,14 @@
 pub mod state;
 
 use cosmwasm_std::{Addr, Decimal, DepsMut, Env, Storage, Timestamp, Uint128};
+use serde::de::IntoDeserializer;
 use state::{OiWindowsSettings, OI_WINDOWS_SETTINGS, PAIR_DEPTHS, WINDOWS};
 
 use crate::{
     error::ContractError,
     trade::get_token_price,
     trading::state::{Trade, TradeInfo, TRADE_INFOS},
+    utils::u128_to_dec,
 };
 
 const MAX_WINDOW_COUNT: u64 = 5;
@@ -161,7 +163,7 @@ pub fn add_price_impact_open_interest(
         )?;
 
         oi_delta_usd += current_collateral_price
-            .checked_mul(Decimal::from_atomics(last_window_oi_usd, 0)?)?
+            .checked_mul(u128_to_dec(last_window_oi_usd.into())?)?
             .checked_div(trade_info.collateral_price_usd)?
             .to_uint_floor();
     }

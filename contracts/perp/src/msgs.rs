@@ -71,7 +71,7 @@ pub enum ExecuteMsg {
     /// - trader: Address of the trader.
     /// - index: The index of the trade or order.
     /// - order_type: The type of pending order.
-    TriggerLimitOrder {
+    TriggerTrade {
         trader: Addr,
         index: u64,
         order_type: PendingOrderType,

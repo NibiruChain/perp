@@ -1,6 +1,12 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Decimal256, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Decimal, Int128, SignedDecimal, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
+
+use crate::{
+    constants::LIQ_THRESHOLD_P,
+    error::ContractError,
+    utils::{u128_to_dec, u128_to_i128},
+};
 
 pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
 pub const TRADES: Map<(Addr, u64), Trade> = Map::new("trades");
@@ -45,6 +51,48 @@ pub struct Trade {
     pub sl: Decimal,
 }
 
+impl Trade {
+    pub fn get_position_size_collateral(&self) -> Uint128 {
+        self.collateral_amount.checked_mul(self.leverage).unwrap()
+    }
+
+    pub fn get_trade_value_collateral(
+        &self,
+        percent_profit: SignedDecimal,
+        closing_fee_collateral: Uint128,
+        order_type: PendingOrderType,
+    ) -> Result<(Uint128, Uint128), ContractError> {
+        let borrowing_fees_collateral =
+            self.get_trade_borrowing_fees_collateral();
+
+        let value_collateral = if order_type == PendingOrderType::LiqClose {
+            Uint128::zero()
+        } else {
+            let value = Int128::try_from(self.collateral_amount.u128().into())?
+                + (SignedDecimal::from_ratio(
+                    self.collateral_amount.u128().into(),
+                    1_i32,
+                )
+                .checked_mul(percent_profit)?
+                .to_int_floor())
+                .checked_sub(borrowing_fees_collateral)?
+                .checked_sub(u128_to_i128(closing_fee_collateral)?)?;
+
+            let collateral_liq_threshold = u128_to_dec(self.collateral_amount)?
+                .checked_mul(Decimal::one().checked_sub(LIQ_THRESHOLD_P)?)?
+                .to_uint_floor();
+
+            if value.i128() > collateral_liq_threshold.u128() as i128 {
+                Uint128::try_from(value).unwrap()
+            } else {
+                Uint128::zero()
+            }
+        };
+
+        Ok((value_collateral, borrowing_fees_collateral))
+    }
+}
+
 #[cw_serde]
 pub struct TradeInfo {
     pub created_block: u64,
@@ -64,98 +112,12 @@ pub enum TradeType {
 
 #[cw_serde]
 pub enum PendingOrderType {
-    MarketOpen,
-    MarketClose,
+    Market,
     LimitOpen,
     StopOpen,
     TpClose,
     SlClose,
     LiqClose,
-    UpdateLeverage,
-    MarketPartialOpen,
-    MarketPartialClose,
-}
-
-#[cw_serde]
-pub struct PendingOrder {
-    pub trade: Trade,
-    pub user: Addr,
-    pub index: u32,
-    pub is_open: bool,
-    pub order_type: PendingOrderType,
-    pub created_block: u32,
-    pub max_slippage_p: Decimal256,
-}
-
-#[cw_serde]
-pub struct OpenLimitOrder {
-    pub trader: Addr,
-    pub pair_index: u64,
-    pub index: u64,
-    pub position_size: Decimal256,
-    pub spread_reduction_p: u64,
-    pub buy: bool,
-    pub leverage: u64,
-    pub tp: Decimal256,
-    pub sl: Decimal256,
-    pub min_price: Decimal256,
-    pub max_price: Decimal256,
-    pub block: u64,
-    pub token_id: u64,
-}
-
-#[cw_serde]
-pub struct PendingMarketOrder {
-    pub trade: Trade,
-    pub block: u64,
-    pub wanted_price: Decimal256,
-    pub slippage_p: u64,
-    pub spread_reduction_p: Decimal256,
-    pub token_id: u64,
-}
-
-#[cw_serde]
-pub struct PendingNftOrder {
-    pub nft_holder: Addr,
-    pub trader: Addr,
-    pub pair_index: u64,
-    pub index: u64,
-    pub order_type: LimitOrder,
-}
-
-#[cw_serde]
-pub struct PairParams {
-    pub one_percent_depth_above: u128,
-    pub one_percent_depth_below: u128,
-    pub rollover_fee_per_block_p: u128,
-    pub funding_fee_per_block_p: u128,
-}
-
-#[cw_serde]
-pub struct PairFundingFees {
-    pub acc_per_oi_long: i128,
-    pub acc_per_oi_short: i128,
-    pub last_update_block: u64,
-}
-
-#[cw_serde]
-pub struct PairRolloverFees {
-    pub acc_per_collateral: u128,
-    pub last_update_block: u64,
-}
-
-#[cw_serde]
-pub struct TradeInitialAccFees {
-    pub rollover: u128,
-    pub funding: i128,
-    pub opened_after_update: bool,
-}
-
-#[cw_serde]
-pub struct AggregatorAnswer {
-    pub order_id: u64,
-    pub price: u128,
-    pub spread_p: u64,
 }
 
 #[cw_serde]

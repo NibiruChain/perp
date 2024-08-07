@@ -1,4 +1,4 @@
-use crate::error::ContractError;
+use crate::{error::ContractError, utils::u128_to_dec};
 use cosmwasm_std::{Addr, Decimal, Deps, Env, Timestamp, Uint128};
 use state::{TraderDailyInfo, TRADER_DAILY_INFOS};
 
@@ -22,7 +22,7 @@ pub fn calculate_fee_amount(
     }
     Ok(trader_daily_info
         .fee_multiplier_cache
-        .checked_mul(Decimal::from_atomics(normal_fee_amount_collateral, 0)?)?
+        .checked_mul(u128_to_dec(normal_fee_amount_collateral)?)?
         .to_uint_floor())
 }
 

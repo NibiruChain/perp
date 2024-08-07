@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     CheckedFromRatioError, DecimalRangeExceeded, DivideByZeroError,
-    OverflowError, StdError,
+    OverflowError, SignedDecimalRangeExceeded, StdError,
 };
 use nibiru_ownable::OwnershipError;
 use thiserror::Error;
@@ -105,6 +105,9 @@ pub enum ContractError {
 
     #[error("invalid trigger price")]
     InvalidTriggerPrice,
+
+    #[error("invalid conversion")]
+    ConversionOverflow,
 }
 
 impl From<serde_json::Error> for ContractError {
@@ -127,6 +130,12 @@ impl From<OverflowError> for ContractError {
 
 impl From<DecimalRangeExceeded> for ContractError {
     fn from(err: DecimalRangeExceeded) -> Self {
+        ContractError::SerdeJson(err.to_string())
+    }
+}
+
+impl From<SignedDecimalRangeExceeded> for ContractError {
+    fn from(err: SignedDecimalRangeExceeded) -> Self {
         ContractError::SerdeJson(err.to_string())
     }
 }
