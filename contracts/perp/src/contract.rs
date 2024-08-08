@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::Result;
-use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{Addr, Decimal, DepsMut, Env, MessageInfo, Response};
 
 use crate::{
     borrowing::state::{GROUP_OIS, PAIR_OIS},
@@ -62,7 +64,13 @@ pub fn execute(
             order_type,
             slippage_p,
             referral: _,
-        } => open_trade(&mut deps, &env.block, trade, order_type, slippage_p),
+        } => open_trade(
+            &mut deps,
+            &env.block,
+            trade,
+            order_type,
+            Decimal::from_str(slippage_p.as_str())?,
+        ),
         ExecuteMsg::CloseTradeMarket { index } => {
             close_trade(&mut deps, &env.block, info, index)
         }

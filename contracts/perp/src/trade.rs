@@ -501,7 +501,9 @@ pub fn get_token_price(
         msg: to_json_binary(&query_msg)?,
     };
 
-    let response: Decimal = deps.querier.query(&QueryRequest::Wasm(request))?;
+    println!("sending exteranl query to oracle contract",);
+    let response = deps.querier.query(&QueryRequest::Wasm(request))?;
+    
     Ok(response)
 }
 
@@ -1160,9 +1162,7 @@ pub fn trigger_trade(
             trigger_price,
             pending_order_type,
         ),
-        PendingOrderType::Market => {
-            Err(ContractError::InvalidTradeType)
-        }
+        PendingOrderType::Market => Err(ContractError::InvalidTradeType),
     }
 }
 

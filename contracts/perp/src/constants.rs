@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal};
+use cosmwasm_std::Decimal;
 
 pub const MAX_SL_P: Decimal = Decimal::percent(75);
 pub const MAX_PNL_P: Decimal = Decimal::percent(900);

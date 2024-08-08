@@ -25,7 +25,7 @@ pub enum ExecuteMsg {
     OpenTrade {
         trade: Trade,
         order_type: OpenOrderType,
-        slippage_p: Decimal,
+        slippage_p: String,
         referral: String,
     },
 
