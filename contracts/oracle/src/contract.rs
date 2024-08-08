@@ -99,8 +99,8 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: OracleQueryMsg) -> StdResult<Binary> {
     match msg {
         OracleQueryMsg::GetPrice { index } => {
-            let price = PRICES.load(deps.storage, index)?;
-            to_json_binary(&price.price)
+            let price = PRICES.load(deps.storage, index)?.price;
+            to_json_binary(&price)
         }
         OracleQueryMsg::GetCollateralPrice { index } => {
             let price = COLLATERAL_PRICES.load(deps.storage, index)?;

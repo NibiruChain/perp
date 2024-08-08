@@ -493,34 +493,24 @@ pub fn get_token_price(
     deps: &Deps,
     oracle_index: &u64,
 ) -> Result<Decimal, ContractError> {
-    let query_msg = OracleQueryMsg::GetPrice {
-        index: *oracle_index,
-    };
-    let request: WasmQuery = WasmQuery::Smart {
-        contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
-        msg: to_json_binary(&query_msg)?,
-    };
-
-    println!("sending exteranl query to oracle contract",);
-    let response = deps.querier.query(&QueryRequest::Wasm(request))?;
-    
-    Ok(response)
+    Ok(deps.querier.query_wasm_smart::<Decimal>(
+        ORACLE_ADDRESS.load(deps.storage)?.to_string(),
+        &OracleQueryMsg::GetPrice {
+            index: *oracle_index,
+        },
+    )?)
 }
 
 pub fn get_collateral_price(
     deps: &Deps,
     oracle_index: &u64,
 ) -> Result<Decimal, ContractError> {
-    let query_msg = OracleQueryMsg::GetCollateralPrice {
-        index: *oracle_index,
-    };
-    let request: WasmQuery = WasmQuery::Smart {
-        contract_addr: ORACLE_ADDRESS.load(deps.storage)?.to_string(),
-        msg: to_json_binary(&query_msg)?,
-    };
-
-    let response: Decimal = deps.querier.query(&QueryRequest::Wasm(request))?;
-    Ok(response)
+    Ok(deps.querier.query_wasm_smart::<Decimal>(
+        ORACLE_ADDRESS.load(deps.storage)?.to_string(),
+        &OracleQueryMsg::GetCollateralPrice {
+            index: *oracle_index,
+        },
+    )?)
 }
 
 fn register_potential_referrer(_trade: &Trade) -> Result<(), ContractError> {
