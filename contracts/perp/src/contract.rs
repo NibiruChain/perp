@@ -62,9 +62,9 @@ pub fn execute(
             order_type,
             slippage_p,
             referral: _,
-        } => open_trade(&mut deps, env, trade, order_type, slippage_p),
+        } => open_trade(&mut deps, &env.block, trade, order_type, slippage_p),
         ExecuteMsg::CloseTradeMarket { index } => {
-            close_trade(&mut deps, env, info, index)
+            close_trade(&mut deps, &env.block, info, index)
         }
         ExecuteMsg::UpdateOpenLimitOrder {
             index,
@@ -73,25 +73,27 @@ pub fn execute(
             sl,
             slippage_p,
         } => update_open_order(
-            &mut deps, env, info, index, price, tp, sl, slippage_p,
+            &mut deps, &env.block, info, index, price, tp, sl, slippage_p,
         ),
         ExecuteMsg::CancelOpenLimitOrder { index } => {
-            cancel_open_order(&mut deps, env, info, index)
+            cancel_open_order(&mut deps, &env.block, info, index)
         }
         ExecuteMsg::UpdateTp { index, new_tp } => {
-            update_tp(&mut deps, env, info, index, new_tp)
+            update_tp(&mut deps, &env.block, info, index, new_tp)
         }
         ExecuteMsg::UpdateSl { index, new_sl } => {
-            update_sl(&mut deps, env, info, index, new_sl)
+            update_sl(&mut deps, &env.block, info, index, new_sl)
         }
         ExecuteMsg::TriggerTrade {
             trader,
             index,
             order_type,
-        } => trigger_trade(&mut deps, env, trader, info, index, order_type),
+        } => {
+            trigger_trade(&mut deps, &env.block, trader, info, index, order_type)
+        }
         ExecuteMsg::AdminMsg { msg } => {
             nibiru_ownable::assert_owner(deps.storage, info.sender.as_str())?;
-            execute_admin(&mut deps, env, msg)
+            execute_admin(&mut deps, msg)
         }
     }
 }
@@ -99,7 +101,6 @@ pub fn execute(
 // todo: add event to each responses
 pub(crate) fn execute_admin(
     deps: &mut DepsMut,
-    _env: Env,
     msg: AdminExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {

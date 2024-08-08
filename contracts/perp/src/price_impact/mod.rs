@@ -1,7 +1,9 @@
 pub mod state;
 
-use cosmwasm_std::{Addr, Decimal, DepsMut, Env, Storage, Timestamp, Uint128};
-use serde::de::IntoDeserializer;
+use cosmwasm_std::{
+    Addr, BlockInfo, Decimal, DepsMut, Storage, Timestamp, Uint128,
+};
+
 use state::{OiWindowsSettings, OI_WINDOWS_SETTINGS, PAIR_DEPTHS, WINDOWS};
 
 use crate::{
@@ -64,7 +66,7 @@ fn _get_trade_price_impact(
 
 fn get_price_impact_oi(
     storage: &dyn Storage,
-    env: Env,
+    block: &BlockInfo,
     pair_index: u64,
     long: bool,
 ) -> Result<Uint128, ContractError> {
@@ -74,7 +76,7 @@ fn get_price_impact_oi(
         return Ok(Uint128::zero());
     }
 
-    let current_window_id = get_current_window_id(&settings, env.block.time);
+    let current_window_id = get_current_window_id(&settings, block.time);
     let earliest_active_window_id =
         get_earliest_active_window_id(current_window_id, settings.windows_count);
 
@@ -94,7 +96,7 @@ fn get_price_impact_oi(
 
 pub fn get_trade_price_impact(
     storage: &dyn Storage,
-    env: Env,
+    block: &BlockInfo,
     open_price: Decimal,
     pair_index: u64,
     long: bool,
@@ -109,7 +111,7 @@ pub fn get_trade_price_impact(
     };
 
     let start_open_interest_usd = if depth > 0 {
-        get_price_impact_oi(storage, env, pair_index, long)?
+        get_price_impact_oi(storage, block, pair_index, long)?
     } else {
         Uint128::zero()
     };
@@ -125,14 +127,14 @@ pub fn get_trade_price_impact(
 
 pub fn add_price_impact_open_interest(
     deps: &mut DepsMut,
-    env: Env,
+    block: &BlockInfo,
     trade: Trade,
     trade_info: TradeInfo,
     position_collateral: Uint128,
 ) -> Result<(), ContractError> {
     let oi_window_settings = OI_WINDOWS_SETTINGS.load(deps.storage)?;
     let current_window_id =
-        get_current_window_id(&oi_window_settings, env.block.time);
+        get_current_window_id(&oi_window_settings, block.time);
 
     let current_collateral_price =
         get_token_price(&deps.as_ref(), &trade.collateral_index)?;
@@ -157,7 +159,7 @@ pub fn add_price_impact_open_interest(
             get_trade_last_window_oi_usd(&trade.user, &trade.pair_index);
         remove_price_impact_open_interest(
             deps,
-            env.clone(),
+            block,
             trade.clone(),
             Uint128::from(last_window_oi_usd),
         )?;
@@ -186,7 +188,7 @@ pub fn add_price_impact_open_interest(
 
     // update trade info
     let mut trade_info = trade_info;
-    trade_info.last_oi_update_ts = env.block.time;
+    trade_info.last_oi_update_ts = block.time;
     trade_info.collateral_price_usd = current_collateral_price;
 
     TRADE_INFOS.save(
@@ -210,7 +212,7 @@ pub fn add_price_impact_open_interest(
 
 pub fn remove_price_impact_open_interest(
     deps: &mut DepsMut,
-    env: Env,
+    block: &BlockInfo,
     trade: Trade,
     oi_delta_collateral: Uint128,
 ) -> Result<(), ContractError> {
@@ -226,7 +228,7 @@ pub fn remove_price_impact_open_interest(
     }
 
     let current_window_id =
-        get_current_window_id(&oi_window_settings, env.block.time);
+        get_current_window_id(&oi_window_settings, block.time);
     let add_window_id =
         get_window_id(trade_info.last_oi_update_ts, &oi_window_settings);
     let not_outdated =

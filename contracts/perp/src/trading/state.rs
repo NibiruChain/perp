@@ -1,11 +1,15 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Int128, SignedDecimal, Timestamp, Uint128};
+use cosmwasm_std::{
+    Addr, BlockInfo, Decimal, Deps, SignedDecimal, Timestamp,
+    Uint128,
+};
 use cw_storage_plus::{Item, Map};
 
 use crate::{
+    borrowing::{get_trade_borrowing_fees, state::BorrowingFeeInput},
     constants::LIQ_THRESHOLD_P,
     error::ContractError,
-    utils::{u128_to_dec, u128_to_i128},
+    utils::{u128_to_dec, u128_to_i128, u128_to_sdec},
 };
 
 pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
@@ -58,24 +62,23 @@ impl Trade {
 
     pub fn get_trade_value_collateral(
         &self,
+        deps: &Deps,
+        block: &BlockInfo,
         percent_profit: SignedDecimal,
         closing_fee_collateral: Uint128,
         order_type: PendingOrderType,
     ) -> Result<(Uint128, Uint128), ContractError> {
         let borrowing_fees_collateral =
-            self.get_trade_borrowing_fees_collateral();
+            self.get_trade_borrowing_fees_collateral(deps, block)?;
 
         let value_collateral = if order_type == PendingOrderType::LiqClose {
             Uint128::zero()
         } else {
-            let value = Int128::try_from(self.collateral_amount.u128().into())?
-                + (SignedDecimal::from_ratio(
-                    self.collateral_amount.u128().into(),
-                    1_i32,
-                )
-                .checked_mul(percent_profit)?
-                .to_int_floor())
-                .checked_sub(borrowing_fees_collateral)?
+            let value = u128_to_i128(self.collateral_amount)?
+                + (u128_to_sdec(self.collateral_amount)?
+                    .checked_mul(percent_profit)?
+                    .to_int_floor())
+                .checked_sub(u128_to_i128(borrowing_fees_collateral)?)?
                 .checked_sub(u128_to_i128(closing_fee_collateral)?)?;
 
             let collateral_liq_threshold = u128_to_dec(self.collateral_amount)?
@@ -90,6 +93,24 @@ impl Trade {
         };
 
         Ok((value_collateral, borrowing_fees_collateral))
+    }
+
+    fn get_trade_borrowing_fees_collateral(
+        &self,
+        deps: &Deps,
+        block: &BlockInfo,
+    ) -> Result<Uint128, ContractError> {
+        let input = BorrowingFeeInput {
+            collateral_index: self.collateral_index,
+            trader: self.user.clone(),
+            pair_index: self.pair_index,
+            index: self.index,
+            long: self.long,
+            collateral: self.collateral_amount,
+            leverage: self.leverage,
+        };
+
+        get_trade_borrowing_fees(deps, block, input)
     }
 }
 

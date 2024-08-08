@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Decimal, Deps, Env, Storage, Uint128};
+use cosmwasm_std::{Addr, BlockInfo, Decimal, Deps, Storage, Uint128};
 use state::{
     BorrowingData, BorrowingFeeInput, BorrowingInitialAccFees,
     BorrowingPairGroup, OpenInterest, PendingBorrowingAccFeesInput, GROUPS,
@@ -15,7 +15,7 @@ pub mod state;
 
 pub fn get_trade_borrowing_fees(
     deps: &Deps,
-    env: Env,
+    block: &BlockInfo,
     input: BorrowingFeeInput,
 ) -> Result<Uint128, ContractError> {
     let intial_fees = INITIAL_ACC_FEES.load(
@@ -26,50 +26,45 @@ pub fn get_trade_borrowing_fees(
     let pair_groups = PAIR_GROUPS
         .load(deps.storage, (input.collateral_index, input.pair_index))?;
 
-    let first_pair_group: BorrowingPairGroup;
-    if pair_groups.len() > 0 {
-        first_pair_group = *pair_groups.first().unwrap();
-    }
+    let mut borrowing_fee_p: Decimal;
 
-    let borrowing_fee_p: Decimal;
     // If pair has had no group after trade was opened,
     // initialize with pair borrowing fee
-    if pair_groups.len() == 0 || first_pair_group.block > intial_fees.block {
-        borrowing_fee_p = (if pair_groups.len() == 0 {
-            let group = get_borrowing_group_pending_acc_fees(
-                deps.storage,
-                input.collateral_index,
-                first_pair_group.group_index,
-                env.block.height,
-            )?;
-
-            if input.long {
-                group.acc_fee_long
-            } else {
-                group.acc_fee_short
-            }
+    if pair_groups.is_empty() {
+        borrowing_fee_p = get_direction_borrowing_pair_pending_acc_fees(
+            deps.storage,
+            input.collateral_index,
+            input.pair_index,
+            block.height,
+            input.long,
+        )?;
+    } else {
+        let first_pair_group = pair_groups.first().unwrap();
+        borrowing_fee_p = if input.long {
+            first_pair_group.pair_acc_fee_long
         } else {
-            if input.long {
-                first_pair_group.pair_acc_fee_long
-            } else {
-                first_pair_group.pair_acc_fee_short
-            }
-        }) - intial_fees.acc_pair_fee;
+            first_pair_group.pair_acc_fee_short
+        }
     }
+    borrowing_fee_p -= intial_fees.acc_pair_fee;
 
     // Sum of max(pair fee, group fee) for all groups the pair was in while trade was open
-    let mut next_group: BorrowingPairGroup;
+    let mut next_group: Option<&BorrowingPairGroup> = None;
     for group in pair_groups.iter().rev() {
         let (delta_group, delta_pair, before_trade_open) =
             get_borrowing_pair_group_acc_fees_deltas(
                 deps.storage,
+                input.collateral_index,
                 group,
                 next_group,
-                intial_fees,
+                &intial_fees,
+                input.pair_index,
+                group.group_index,
                 input.long,
+                block.height,
             )?;
 
-        next_group = *group;
+        next_group = Some(group);
 
         borrowing_fee_p += Decimal::max(delta_group, delta_pair);
         if before_trade_open {
@@ -88,46 +83,75 @@ pub fn get_trade_borrowing_fees(
 fn get_borrowing_pair_group_acc_fees_deltas(
     storage: &dyn Storage,
     collateral_index: u64,
-    group: BorrowingPairGroup,
-    next_group: Option<BorrowingPairGroup>,
-    initial_fees: BorrowingInitialAccFees,
-    last_active_group: bool,
+    group: &BorrowingPairGroup,
+    next_group: Option<&BorrowingPairGroup>,
+    initial_fees: &BorrowingInitialAccFees,
     pair_index: u64,
     group_index: u64,
-    height: u64,
-    block: u64,
     long: bool,
+    current_block: u64,
 ) -> Result<(Decimal, Decimal, bool), ContractError> {
     let before_trade_open = group.block < initial_fees.block;
 
-    let delta_group: Decimal;
-    let delta_pair: Decimal;
+    let mut delta_group: Decimal;
+    let mut delta_pair: Decimal;
 
-    if Some(next_group) {
-        delta_group = get_direction_borrowing_group_pending_acc_fees(
-            storage,
-            collateral_index,
-            group_index,
-            height,
-            long,
-        )?;
+    match next_group {
+        Some(next_group) => {
+            if before_trade_open && next_group.block <= initial_fees.block {
+                return Ok((
+                    Decimal::zero(),
+                    Decimal::zero(),
+                    before_trade_open,
+                ));
+            }
 
-        delta_pair = get_direction_borrowing_pair_pending_acc_fees(
-            storage,
-            collateral_index,
-            pair_index,
-            height,
-            long,
-        )?;
-    } else {
-        // previous group
+            delta_group = if long {
+                next_group.prev_group_acc_fee_long
+            } else {
+                next_group.prev_group_acc_fee_short
+            };
+            delta_pair = if long {
+                next_group.pair_acc_fee_long
+            } else {
+                next_group.pair_acc_fee_short
+            };
+        }
+        None => {
+            delta_group = get_direction_borrowing_group_pending_acc_fees(
+                storage,
+                collateral_index,
+                group_index,
+                current_block,
+                long,
+            )?;
+
+            delta_pair = get_direction_borrowing_pair_pending_acc_fees(
+                storage,
+                collateral_index,
+                pair_index,
+                current_block,
+                long,
+            )?;
+        }
     }
 
-    Ok(())
+    if before_trade_open {
+        delta_group -= initial_fees.acc_group_fee;
+        delta_pair -= initial_fees.acc_pair_fee;
+    } else if long {
+        delta_group -= group.prev_group_acc_fee_long;
+        delta_pair -= group.pair_acc_fee_long;
+    } else {
+        delta_group -= group.prev_group_acc_fee_short;
+        delta_pair -= group.pair_acc_fee_short;
+    }
+
+    Ok((delta_group, delta_pair, before_trade_open))
 }
 
 pub fn handle_trade_borrowing(
-    env: Env,
+    block: &BlockInfo,
     sender: Addr,
     trade_index: u64,
     storage: &mut dyn Storage,
@@ -137,7 +161,7 @@ pub fn handle_trade_borrowing(
     open: bool,
     long: bool,
 ) -> Result<(), ContractError> {
-    let block_number = env.block.height;
+    let block_number = block.height;
     let group_index =
         get_borrowing_pair_group_index(storage, collateral_index, pair_index);
 
@@ -499,7 +523,7 @@ fn get_borrowing_pair_group_index(
 
 pub fn get_trade_liquidation_price_with_fees(
     deps: &Deps,
-    env: Env,
+    block: &BlockInfo,
     trade: Trade,
     use_borrowing_fees: bool,
 ) -> Result<Decimal, ContractError> {
@@ -520,7 +544,7 @@ pub fn get_trade_liquidation_price_with_fees(
     .to_uint_floor();
 
     let borrowing_fees_collateral = if use_borrowing_fees {
-        calculate_fee_amount(deps, env, &trade.user, closing_fees_collateral)?
+        calculate_fee_amount(deps, block, &trade.user, closing_fees_collateral)?
     } else {
         Uint128::zero()
     };
