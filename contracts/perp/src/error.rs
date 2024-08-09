@@ -108,6 +108,9 @@ pub enum ContractError {
 
     #[error("invalid conversion")]
     ConversionOverflow,
+
+    #[error("invalid conversion for type {0}")]
+    StdParseError(String),
 }
 
 impl From<serde_json::Error> for ContractError {

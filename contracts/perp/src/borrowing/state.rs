@@ -5,9 +5,9 @@ use cw_storage_plus::Map;
 pub const PAIRS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
 pub const PAIR_GROUPS: Map<(u64, u64), Vec<BorrowingPairGroup>> =
     Map::new("borrowing_pair_group");
-pub const PAIR_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
+pub const PAIR_OIS: Map<(u64, u64), OpenInterest> = Map::new("pair_ois");
 pub const GROUPS: Map<(u64, u64), BorrowingData> = Map::new("borrowing_data");
-pub const GROUP_OIS: Map<(u64, u64), OpenInterest> = Map::new("open_interest");
+pub const GROUP_OIS: Map<(u64, u64), OpenInterest> = Map::new("group_ois");
 pub const INITIAL_ACC_FEES: Map<(u64, Addr, u64), BorrowingInitialAccFees> =
     Map::new("initial_acc_fees");
 

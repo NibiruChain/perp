@@ -6,9 +6,12 @@ use state::{
 };
 
 use crate::{
-    constants::LIQ_THRESHOLD_P, error::ContractError,
-    fees::calculate_fee_amount, pairs::state::FEES, trade::get_collateral_price,
-    trading::state::Trade, utils::u128_to_dec,
+    constants::LIQ_THRESHOLD_P,
+    error::ContractError,
+    fees::calculate_fee_amount,
+    pairs::state::FEES,
+    trading::{state::Trade, utils::get_collateral_price},
+    utils::u128_to_dec,
 };
 
 pub mod state;

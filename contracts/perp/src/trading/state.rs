@@ -227,14 +227,6 @@ pub struct Values {
 }
 
 #[cw_serde]
-pub enum LimitOrder {
-    TP,
-    SL,
-    LIQ,
-    OPEN,
-}
-
-#[cw_serde]
 pub enum OpenOrderType {
     /// Market orders, order is opened as long as the price is within the
     /// limits of the order.

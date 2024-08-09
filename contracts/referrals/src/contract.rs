@@ -139,14 +139,12 @@ pub fn execute_register_code(
 
     CODE_OWNERS.save(deps.storage, code.as_bytes().to_vec(), &account)?;
 
-    if !REFERRER_TIERS.has(deps.storage, account.clone()) {
-        if TIERS.has(deps.storage, 1) {
-            REFERRER_TIERS.save(
-                deps.storage,
-                account.clone(),
-                &Uint128::one(),
-            )?;
-        }
+    if !REFERRER_TIERS.has(deps.storage, account.clone()) && TIERS.has(deps.storage, 1) {
+        REFERRER_TIERS.save(
+            deps.storage,
+            account.clone(),
+            &Uint128::one(),
+        )?;
     }
 
     Ok(Response::new()
@@ -240,7 +238,7 @@ pub fn execute_set_referrer_discount_share(
     check_admin(deps.as_ref(), _env, info)?;
 
     let referrer = deps.api.addr_validate(&referrer)?;
-    let discount_share = Uint128::from(discount_share);
+    let discount_share = discount_share;
 
     REFERRER_DISCOUNT_SHARES.save(
         deps.storage,

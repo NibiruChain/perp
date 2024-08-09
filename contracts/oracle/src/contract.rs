@@ -2,8 +2,8 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult,
+    to_json_binary, Binary, CustomQuery, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Response, StdResult,
 };
 use cw_storage_plus::Map;
 use nibiru_ownable::{ownable_execute, ownable_query, OwnershipError};
@@ -54,6 +54,8 @@ pub enum OracleQueryMsg {
     #[returns(Decimal)]
     GetCollateralPrice { index: u64 },
 }
+
+impl CustomQuery for OracleQueryMsg {}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
@@ -169,7 +171,7 @@ mod tests {
 
         let msg = OracleQueryMsg::GetPrice { index: 1 };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
-        let price: Decimal = from_json(&res).unwrap();
+        let price: Decimal = from_json(res).unwrap();
         assert_eq!(price, Decimal::percent(100));
     }
 
@@ -192,7 +194,7 @@ mod tests {
 
         let msg = OracleQueryMsg::GetCollateralPrice { index: 1 };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
-        let price: Decimal = from_json(&res).unwrap();
+        let price: Decimal = from_json(res).unwrap();
         assert_eq!(price, Decimal::percent(200));
     }
 
