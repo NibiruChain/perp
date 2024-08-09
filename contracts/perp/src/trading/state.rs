@@ -1,15 +1,21 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    Addr, BlockInfo, Decimal, Deps, SignedDecimal, Timestamp,
-    Uint128,
+    Addr, BlockInfo, Decimal, Deps, SignedDecimal, Timestamp, Uint128,
 };
 use cw_storage_plus::{Item, Map};
 
 use crate::{
     borrowing::{get_trade_borrowing_fees, state::BorrowingFeeInput},
-    constants::LIQ_THRESHOLD_P,
+    constants::{LIQ_THRESHOLD_P, MAX_OPEN_NEGATIVE_PNL_P},
     error::ContractError,
+    pairs::state::PAIRS,
+    price_impact::get_trade_price_impact,
     utils::{u128_to_dec, u128_to_i128, u128_to_sdec},
+};
+
+use super::utils::{
+    get_market_execution_price, get_position_size_collateral,
+    within_exposure_limits,
 };
 
 pub const COLLATERALS: Map<u64, String> = Map::new("collaterals");
@@ -93,6 +99,76 @@ impl Trade {
         };
 
         Ok((value_collateral, borrowing_fees_collateral))
+    }
+
+    pub fn validate(
+        &self,
+        deps: Deps,
+        block: &BlockInfo,
+        position_size_usd: Uint128,
+        execution_price: Decimal,
+        market_price: Decimal,
+        max_slippage_p: Decimal,
+    ) -> Result<(Decimal, Decimal), ContractError> {
+        let position_size_collateral =
+            get_position_size_collateral(self.collateral_amount, self.leverage)?;
+
+        let spread_p = PAIRS.load(deps.storage, self.pair_index)?.spread_p;
+
+        if market_price.is_zero() {
+            return Err(ContractError::TradeInvalid);
+        }
+
+        let (price_impact_p, price_after_impact) = get_trade_price_impact(
+            deps.storage,
+            block,
+            get_market_execution_price(execution_price, spread_p, self.long),
+            self.pair_index,
+            self.long,
+            position_size_usd,
+        )?;
+
+        let max_slippage = price_after_impact * max_slippage_p;
+        if self.long && market_price > price_after_impact + max_slippage {
+            return Err(ContractError::TradeInvalid);
+        }
+
+        if !self.long && market_price < price_after_impact - max_slippage {
+            return Err(ContractError::TradeInvalid);
+        }
+
+        if !self.tp.is_zero()
+            && ((self.long && market_price >= self.tp)
+                || (!self.long && market_price <= self.tp))
+        {
+            return Err(ContractError::InvalidTpSl);
+        }
+
+        if !self.sl.is_zero()
+            && ((self.long && market_price <= self.sl)
+                || (!self.long && market_price >= self.sl))
+        {
+            return Err(ContractError::InvalidTpSl);
+        }
+
+        let group_index = PAIRS.load(deps.storage, self.pair_index)?.group_index;
+
+        within_exposure_limits(
+            deps.storage,
+            self.pair_index,
+            group_index,
+            self.collateral_index,
+            self.long,
+            position_size_collateral,
+        )?;
+
+        if price_impact_p.checked_mul(u128_to_dec(self.leverage)?)?
+            > MAX_OPEN_NEGATIVE_PNL_P
+        {
+            return Err(ContractError::PriceImpactTooHigh);
+        }
+
+        Ok((price_impact_p, price_after_impact))
     }
 
     fn get_trade_borrowing_fees_collateral(
